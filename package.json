@@ -1,0 +1,43 @@
+{
+  "name": "noura",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "scheme": "noura",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^14.1.0",
+    "@reduxjs/toolkit": "2.8.2",
+    "expo": "~53.0.20",
+    "expo-constants": "~17.1.7",
+    "expo-dev-client": "~5.2.4",
+    "expo-linking": "~7.1.7",
+    "expo-quick-actions": "5.0.0",
+    "expo-router": "~5.1.4",
+    "expo-status-bar": "~2.2.3",
+    "react": "19.0.0",
+    "react-native": "0.79.5",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-screens": "~4.11.1",
+    "redux-devtools-expo-dev-plugin": "2.0.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/estree": "1.0.8",
+    "@types/istanbul-lib-report": "3.0.3",
+    "@types/istanbul-reports": "3.0.4",
+    "@types/react": "~19.0.10",
+    "eslint": "9.32.0",
+    "eslint-config-expo": "~9.2.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "5.5.3",
+    "eslint-plugin-react-native": "5.0.0",
+    "prettier": "3.6.2",
+    "typescript": "~5.8.3"
+  },
+  "private": true
+}
