@@ -21,6 +21,7 @@ export interface FollowRepository {
     UnfollowUser: (id: string, token: string) => Promise<Follows.Response>;
     GetFollowers: (id: string, token: string) => Promise<Follows.Response>;
     GetFollowing: (id: string, token: string) => Promise<Follows.Response>;
+    GetUsersFollowCount: (id: string, token: string) => Promise<Follows.Response>;
 }
 
 export interface MeetingRepository {

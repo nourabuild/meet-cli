@@ -146,6 +146,29 @@ const NewFollowRepository = (host: string): FollowRepository => {
                 data: response.data,
             } satisfies Follows.Response;
         },
+        GetUsersFollowCount: async (id: string, token: string): Promise<Follows.Response> => {
+            const req = await fetch(`${host}/api/v1/follow/status/${id}/count`, {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Accept": "application/json",
+                },
+            });
+
+            const response = await req.json();
+
+            if (!req.ok) {
+                return {
+                    success: false,
+                    errors: response.errors || [{ field: "general", error: "Failed to get follow count" }],
+                } satisfies Follows.Response;
+            }
+
+            return {
+                success: true,
+                data: response, // Return the response directly since it contains following_count and followers_count
+            } satisfies Follows.Response;
+        },
     }
 }
 

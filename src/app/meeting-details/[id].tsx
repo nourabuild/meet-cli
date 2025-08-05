@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import { theme } from '@/styles/theme';
 import { Meetings } from '@/repo/meetings';
 import { MeetingRepo, UserRepo } from '@/repo';
+import { useReduxSelector } from '@/lib/hooks';
 
 // -------------------------------
 // State Management
@@ -22,6 +23,7 @@ type MeetingDetailState =
 export default function MeetingDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const [meetingState, setMeetingState] = useState<MeetingDetailState>({ status: "idle" });
+    const currentUser = useReduxSelector((state) => state.user);
 
     useEffect(() => {
         const fetchMeeting = async () => {
@@ -123,8 +125,8 @@ export default function MeetingDetailScreen() {
 
     const handleParticipantPress = async (account: string) => {
         console.log('Participant pressed:', account);
-        console.log('Participant pressed - account type:', typeof account);
-        console.log('Participant pressed - account length:', account.length);
+        console.log('Current user account:', currentUser?.account);
+        console.log('Is current user?', account === currentUser?.account);
 
         try {
             const token = await SecureStore.getItemAsync('access_token');
@@ -133,23 +135,33 @@ export default function MeetingDetailScreen() {
                 return;
             }
 
-            // Fetch user data by account
-            const userResponse = await UserRepo.GetByAccount(account, token);
-            console.log('GetByAccount response:', userResponse);
-
-            if (userResponse.success) {
-                // First dismiss the current modal, then navigate to user profile
+            // Check if this is the current user
+            if (account === currentUser?.account) {
+                console.log('Navigating to own profile (profile tab)');
+                // Navigate to the profile tab for current user
                 router.dismiss();
-                // Use a small delay to ensure modal is dismissed before navigation
                 setTimeout(() => {
-                    router.push(`./${account}`);
+                    router.push('/(tabs)/profile');
                 }, 100);
             } else {
-                console.error('Failed to fetch user data:', userResponse.errors);
-                // TODO: Show error message to user
+                console.log('Navigating to other user profile:', account);
+                // Fetch user data by account for other users
+                const userResponse = await UserRepo.GetByAccount(account, token);
+                console.log('GetByAccount response:', userResponse);
+
+                if (userResponse.success) {
+                    // Navigate to dynamic [account] route for other users
+                    router.dismiss();
+                    setTimeout(() => {
+                        router.push(`/${account}`);
+                    }, 100);
+                } else {
+                    console.error('Failed to fetch user data:', userResponse.errors);
+                    // TODO: Show error message to user
+                }
             }
         } catch (error) {
-            console.error('Error fetching user data:', error);
+            console.error('Error handling participant press:', error);
             // TODO: Show error message to user
         }
     };

@@ -34,7 +34,6 @@ export default function ShowUserScreen() {
     const [isFollowing, setIsFollowing] = useState<boolean>(false);
     const [followLoading, setFollowLoading] = useState<boolean>(false);
 
-
     useEffect(() => {
         const fetchUserProfile = async () => {
             if (!params.account) {
@@ -69,40 +68,29 @@ export default function ShowUserScreen() {
 
                 const userData = userResponse.data;
 
-                // Fetch following count for the profile user
-                const followingResponse = await FollowRepo.GetFollowing(userData.id, token);
-                console.log('Following response:', JSON.stringify(followingResponse, null, 2));
-
-                let followingCount = 0;
-                if (followingResponse.success) {
-                    if (typeof followingResponse.data === 'object' && followingResponse.data && 'count' in followingResponse.data) {
-                        const count = (followingResponse.data as any).count;
-                        if (typeof count === 'number') {
-                            followingCount = count;
-                        }
-                    } else if (Array.isArray(followingResponse.data)) {
-                        followingCount = followingResponse.data.length;
-                    } else {
-                        followingCount = 0;
-                    }
-                }
-
-                // Fetch followers count for the profile user
-                const followersResponse = await FollowRepo.GetFollowers(userData.id, token);
-                console.log('Followers response:', JSON.stringify(followersResponse, null, 2));
+                // Get follow counts for the user using GetUsersFollowCount
+                const followCountResponse = await FollowRepo.GetUsersFollowCount(userData.id, token);
+                console.log('Follow count response:', JSON.stringify(followCountResponse, null, 2));
 
                 let followersCount = 0;
-                if (followersResponse.success) {
-                    if (typeof followersResponse.data === 'object' && followersResponse.data && 'count' in followersResponse.data) {
-                        const count = (followersResponse.data as any).count;
-                        if (typeof count === 'number') {
-                            followersCount = count;
-                        }
-                    } else if (Array.isArray(followersResponse.data)) {
-                        followersCount = followersResponse.data.length;
-                    } else {
-                        followersCount = 0;
+                let followingCount = 0;
+
+                if (followCountResponse.success && followCountResponse.data) {
+                    const countData = followCountResponse.data as any;
+                    console.log('Count data structure:', countData);
+
+                    // Try different possible response formats
+                    if (typeof countData === 'object') {
+                        // Check for various possible field names
+                        followersCount = countData.followers_count || countData.followersCount ||
+                            countData.followers || countData.follower_count || 0;
+                        followingCount = countData.following_count || countData.followingCount ||
+                            countData.following || countData.follow_count || 0;
+
+                        console.log('Parsed counts - Followers:', followersCount, 'Following:', followingCount);
                     }
+                } else {
+                    console.log('Follow count response failed or no data:', followCountResponse);
                 }
 
                 // Check if current user is following this user
