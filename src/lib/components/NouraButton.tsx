@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
         backgroundColor: theme.colorDeepSkyBlue,
     },
     secondary: {
-        backgroundColor: theme.colorSkyBlue,
+        backgroundColor: theme.colorNouraBlue,
     },
     outline: {
         backgroundColor: "transparent",

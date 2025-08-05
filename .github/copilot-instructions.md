@@ -1,7 +1,7 @@
-# Copilot Instructions for Wall Project
+# Copilot Instructions for Meetings Project using React Native Expo
 
 ## Project Overview
-**Wall** is a user-facing fortress platform with both web and native components. The project uses Expo Router for universal apps with TypeScript and follows a unified architecture across platforms.
+**Meetings** is a user-facing platform for managing meetings with both web and native components. The project uses Expo Router for universal apps with TypeScript and follows a unified architecture across platforms.
 
 ## Architecture Overview
 - **Website**: Expo Router website with Tailwind CSS
@@ -32,7 +32,7 @@
 ## Theme System (Native App)
 - Centralized theme in `theme.ts` with sky-blue color palette
 - Import: `import { theme } from "../../theme"`
-- Colors: `colorSkyBlue`, `colorDeepSkyBlue`, `colorAzureBlue`, `colorPaleBlue`
+- Colors: `colorNouraBlue`, `colorDeepSkyBlue`, `colorAzureBlue`, `colorPaleBlue`
 
 ## Development Workflows
 

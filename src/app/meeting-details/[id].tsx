@@ -1,0 +1,556 @@
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router, useLocalSearchParams } from 'expo-router';
+import Feather from '@expo/vector-icons/Feather';
+import * as SecureStore from 'expo-secure-store';
+
+import { theme } from '@/styles/theme';
+import { Meetings } from '@/repo/meetings';
+import { MeetingRepo, UserRepo } from '@/repo';
+
+// -------------------------------
+// State Management
+// -------------------------------
+
+type MeetingDetailState =
+    | { status: "idle" }
+    | { status: "loading" }
+    | { status: "error"; error: string }
+    | { status: "success"; data: Meetings.Meeting };
+
+export default function MeetingDetailScreen() {
+    const { id } = useLocalSearchParams<{ id: string }>();
+    const [meetingState, setMeetingState] = useState<MeetingDetailState>({ status: "idle" });
+
+    useEffect(() => {
+        const fetchMeeting = async () => {
+            if (!id) {
+                setMeetingState({ status: "error", error: "No meeting ID provided" });
+                return;
+            }
+
+            setMeetingState({ status: "loading" });
+
+            try {
+                const token = await SecureStore.getItemAsync('access_token');
+                if (!token) {
+                    console.log('No access token found');
+                    setMeetingState({ status: "error", error: "Authentication required. Please log in again." });
+                    return;
+                }
+
+                const response = await MeetingRepo.GetMeetingById(id, token);
+                console.log('GetMeetingById response:', JSON.stringify(response, null, 2));
+
+                if (response.success) {
+                    if (!Array.isArray(response.data)) {
+                        let meetingData = response.data as Meetings.Meeting;
+                        console.log('Meeting data participants:', JSON.stringify(meetingData.participants, null, 2));
+                        console.log('Number of participants:', meetingData.participants?.length || 0);
+
+                        // If participants are empty or missing, fetch them separately
+                        if (!meetingData.participants || meetingData.participants.length === 0) {
+                            console.log('Participants not included in meeting data, fetching separately...');
+
+                            const participantsResponse = await MeetingRepo.GetParticipantsByMeetingId(id, token);
+                            console.log('GetParticipantsByMeetingId response:', JSON.stringify(participantsResponse, null, 2));
+
+                            if (participantsResponse.success) {
+                                const participantsData = Array.isArray(participantsResponse.data)
+                                    ? participantsResponse.data
+                                    : [participantsResponse.data];
+
+                                meetingData = {
+                                    ...meetingData,
+                                    participants: participantsData as Meetings.Participant[]
+                                };
+
+                                console.log('Updated meeting data with participants:', JSON.stringify(meetingData.participants, null, 2));
+                            } else {
+                                console.error('Failed to fetch participants:', participantsResponse.errors);
+                            }
+                        }
+
+                        if (meetingData.participants && meetingData.participants.length > 0) {
+                            console.log('First participant user data:', JSON.stringify(meetingData.participants[0].user, null, 2));
+                        }
+
+                        setMeetingState({ status: "success", data: meetingData });
+                    } else {
+                        console.error('Unexpected array response from GetMeetingById');
+                        setMeetingState({ status: "error", error: "Invalid response format from server" });
+                    }
+                } else {
+                    console.error('Failed to fetch meeting:', response);
+                    setMeetingState({
+                        status: "error",
+                        error: typeof response.errors === "string" ? response.errors : "Failed to fetch meeting details"
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching meeting:', error);
+                setMeetingState({
+                    status: "error",
+                    error: error instanceof Error ? error.message : "Network error. Please check your connection and try again.",
+                });
+            }
+        };
+
+        fetchMeeting();
+    }, [id]);
+
+    const getInitials = (name: string) => {
+        return name
+            .split(' ')
+            .map(n => n[0])
+            .join('')
+            .toUpperCase()
+            .slice(0, 2);
+    };
+
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+
+    const handleParticipantPress = async (account: string) => {
+        console.log('Participant pressed:', account);
+        console.log('Participant pressed - account type:', typeof account);
+        console.log('Participant pressed - account length:', account.length);
+
+        try {
+            const token = await SecureStore.getItemAsync('access_token');
+            if (!token) {
+                console.log('No access token found');
+                return;
+            }
+
+            // Fetch user data by account
+            const userResponse = await UserRepo.GetByAccount(account, token);
+            console.log('GetByAccount response:', userResponse);
+
+            if (userResponse.success) {
+                // First dismiss the current modal, then navigate to user profile
+                router.dismiss();
+                // Use a small delay to ensure modal is dismissed before navigation
+                setTimeout(() => {
+                    router.push(`./${account}`);
+                }, 100);
+            } else {
+                console.error('Failed to fetch user data:', userResponse.errors);
+                // TODO: Show error message to user
+            }
+        } catch (error) {
+            console.error('Error fetching user data:', error);
+            // TODO: Show error message to user
+        }
+    };
+
+    const renderParticipant = (participant: Meetings.Participant) => (
+        <TouchableOpacity
+            key={participant.id}
+            style={styles.participantItem}
+            onPress={() => {
+                console.log('Full participant data:', JSON.stringify(participant, null, 2));
+                console.log('participant.user:', JSON.stringify(participant.user, null, 2));
+                console.log('participant.user.account:', participant.user.account);
+                handleParticipantPress(participant.user.account);
+            }}
+            activeOpacity={0.7}
+        >
+            <View style={styles.participantAvatar}>
+                <Text style={styles.participantInitials}>
+                    {getInitials(participant.user.name)}
+                </Text>
+            </View>
+            <View style={styles.participantInfo}>
+                <Text style={styles.participantName}>{participant.user.name}</Text>
+                <Text style={styles.participantEmail}>{participant.user.email}</Text>
+                <Text style={styles.participantStatus}>Status: {participant.status}</Text>
+            </View>
+            <Feather name="chevron-right" size={16} color={theme.colorGrey} />
+        </TouchableOpacity>
+    );
+
+    const handleGoBack = () => {
+        router.back();
+    };
+
+    if (meetingState.status === "loading") {
+        return (
+            <SafeAreaView style={styles.container} edges={['top']}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.closeButton} onPress={handleGoBack}>
+                        <Feather name="arrow-left" size={24} color={theme.colorBlack} />
+                    </TouchableOpacity>
+                    <Text style={styles.title}>Meeting Details</Text>
+                    <View style={styles.placeholder} />
+                </View>
+                <View style={styles.loadingContainer}>
+                    <Text style={styles.loadingText}>Loading meeting details...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (meetingState.status === "error") {
+        return (
+            <SafeAreaView style={styles.container} edges={['top']}>
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.closeButton} onPress={handleGoBack}>
+                        <Feather name="arrow-left" size={24} color={theme.colorBlack} />
+                    </TouchableOpacity>
+                    <Text style={styles.title}>Meeting Details</Text>
+                    <View style={styles.placeholder} />
+                </View>
+                <View style={styles.loadingContainer}>
+                    <Text style={styles.loadingText}>{meetingState.error}</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (meetingState.status !== "success") {
+        return null;
+    }
+
+    const meeting = meetingState.data;
+
+    return (
+        <SafeAreaView style={styles.container} edges={['top']}>
+            <View style={styles.header}>
+                <TouchableOpacity style={styles.closeButton} onPress={handleGoBack}>
+                    <Feather name="arrow-left" size={24} color={theme.colorBlack} />
+                </TouchableOpacity>
+                <Text style={styles.title}>Meeting Details</Text>
+                <View style={styles.placeholder} />
+            </View>
+
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                {/* Meeting Info */}
+                <View style={styles.section}>
+                    <Text style={styles.meetingTitle}>{meeting.title}</Text>
+
+                    <Text style={styles.meetingDescription}>
+                        Type: {meeting.meeting_type?.title || 'N/A'}
+                    </Text>
+
+                    <View style={styles.statusBadge}>
+                        <Feather
+                            name={meeting.status === 'pending' ? 'clock' : meeting.status === 'approved' ? 'check-circle' : 'x-circle'}
+                            size={16}
+                            color={meeting.status === 'pending' ? '#ffc107' : meeting.status === 'approved' ? '#28a745' : '#dc3545'}
+                        />
+                        <Text style={[styles.statusText, {
+                            color: meeting.status === 'pending' ? '#856404' : meeting.status === 'approved' ? '#155724' : '#721c24'
+                        }]}>
+                            {meeting.status.charAt(0).toUpperCase() + meeting.status.slice(1)}
+                        </Text>
+                    </View>
+                </View>
+
+                {/* Meeting Details */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Details</Text>
+
+                    <View style={styles.detailItem}>
+                        <Feather name="calendar" size={20} color={theme.colorNouraBlue} />
+                        <View style={styles.detailText}>
+                            <Text style={styles.detailLabel}>Start Time</Text>
+                            <Text style={styles.detailValue}>{formatDate(meeting.start_time)}</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.detailItem}>
+                        <Feather name="map-pin" size={20} color={theme.colorNouraBlue} />
+                        <View style={styles.detailText}>
+                            <Text style={styles.detailLabel}>Location</Text>
+                            <Text style={styles.detailValue}>{meeting.location}</Text>
+                        </View>
+                    </View>
+
+                    {meeting.location_url && (
+                        <View style={styles.detailItem}>
+                            <Feather name="link" size={20} color={theme.colorNouraBlue} />
+                            <View style={styles.detailText}>
+                                <Text style={styles.detailLabel}>Meeting Link</Text>
+                                <Text style={styles.detailValue}>{meeting.location_url}</Text>
+                            </View>
+                        </View>
+                    )}
+                </View>
+
+                {/* Owner */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Meeting Owner</Text>
+
+                    {meeting.participants.find(p => p.user_id === meeting.owner_id) ? (
+                        <TouchableOpacity
+                            style={styles.organizerItem}
+                            onPress={() => {
+                                const owner = meeting.participants.find(p => p.user_id === meeting.owner_id);
+                                if (owner) handleParticipantPress(owner.user.account);
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <View style={styles.organizerAvatar}>
+                                <Text style={styles.organizerInitials}>
+                                    {getInitials(meeting.participants.find(p => p.user_id === meeting.owner_id)?.user.name || 'Unknown')}
+                                </Text>
+                            </View>
+                            <View style={styles.organizerInfo}>
+                                <Text style={styles.organizerName}>
+                                    {meeting.participants.find(p => p.user_id === meeting.owner_id)?.user.name || 'Unknown'}
+                                </Text>
+                                <Text style={styles.organizerEmail}>
+                                    {meeting.participants.find(p => p.user_id === meeting.owner_id)?.user.email || 'Unknown'}
+                                </Text>
+                            </View>
+                            <Feather name="chevron-right" size={16} color={theme.colorGrey} />
+                        </TouchableOpacity>
+                    ) : (
+                        <Text style={styles.detailValue}>Owner information not available</Text>
+                    )}
+                </View>
+
+                {/* Participants */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>
+                        Participants ({meeting.participants.length})
+                    </Text>
+
+                    <View style={styles.participantsList}>
+                        {meeting.participants.map(renderParticipant)}
+                    </View>
+                </View>
+
+                {/* Actions */}
+                <View style={styles.section}>
+                    <View style={styles.actionButtons}>
+                        <TouchableOpacity style={styles.actionButton}>
+                            <Feather name="edit-3" size={18} color={theme.colorNouraBlue} />
+                            <Text style={styles.actionButtonText}>Edit Meeting</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={[styles.actionButton, styles.cancelButton]}>
+                            <Feather name="x-circle" size={18} color="#ff4444" />
+                            <Text style={[styles.actionButtonText, styles.cancelButtonText]}>
+                                Cancel Meeting
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </ScrollView>
+        </SafeAreaView>
+    );
+}
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: theme.colorWhite,
+    },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colorLightGrey,
+    },
+    closeButton: {
+        padding: 4,
+    },
+    title: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: theme.colorBlack,
+    },
+    placeholder: {
+        width: 32,
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 40,
+    },
+    loadingText: {
+        fontSize: 16,
+        color: theme.colorGrey,
+        textAlign: 'center',
+    },
+    content: {
+        flex: 1,
+    },
+    section: {
+        paddingHorizontal: 20,
+        paddingVertical: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colorLightGrey,
+    },
+    meetingTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: theme.colorBlack,
+        marginBottom: 8,
+    },
+    meetingDescription: {
+        fontSize: 16,
+        color: theme.colorGrey,
+        lineHeight: 22,
+        marginBottom: 16,
+    },
+    statusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#d4edda',
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        alignSelf: 'flex-start',
+        gap: 6,
+    },
+    statusText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#155724',
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: theme.colorBlack,
+        marginBottom: 16,
+    },
+    detailItem: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginBottom: 16,
+        gap: 12,
+    },
+    detailText: {
+        flex: 1,
+    },
+    detailLabel: {
+        fontSize: 14,
+        color: theme.colorGrey,
+        marginBottom: 2,
+    },
+    detailValue: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: theme.colorBlack,
+    },
+    organizerItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        backgroundColor: theme.colorLightGrey,
+        borderRadius: 12,
+        gap: 12,
+    },
+    organizerAvatar: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: theme.colorNouraBlue,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    organizerInitials: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: theme.colorWhite,
+    },
+    organizerInfo: {
+        flex: 1,
+    },
+    organizerName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: theme.colorBlack,
+        marginBottom: 2,
+    },
+    organizerEmail: {
+        fontSize: 14,
+        color: theme.colorGrey,
+    },
+    participantsList: {
+        gap: 8,
+    },
+    participantItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        backgroundColor: theme.colorWhite,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: theme.colorLightGrey,
+        gap: 12,
+    },
+    participantAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: theme.colorNouraBlue,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    participantInitials: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: theme.colorWhite,
+    },
+    participantInfo: {
+        flex: 1,
+    },
+    participantName: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: theme.colorBlack,
+        marginBottom: 2,
+    },
+    participantEmail: {
+        fontSize: 12,
+        color: theme.colorGrey,
+    },
+    participantStatus: {
+        fontSize: 11,
+        color: theme.colorNouraBlue,
+        fontWeight: '500',
+        marginTop: 2,
+    },
+    actionButtons: {
+        gap: 12,
+    },
+    actionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: theme.colorNouraBlue,
+        gap: 8,
+    },
+    actionButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: theme.colorNouraBlue,
+    },
+    cancelButton: {
+        borderColor: '#ff4444',
+    },
+    cancelButtonText: {
+        color: '#ff4444',
+    },
+});
