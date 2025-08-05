@@ -204,7 +204,9 @@ export default function MeetingDetailScreen() {
                         <Feather name="arrow-left" size={24} color={theme.colorBlack} />
                     </TouchableOpacity>
                     <Text style={styles.title}>Meeting Details</Text>
-                    <View style={styles.placeholder} />
+                    <TouchableOpacity style={styles.editButton}>
+                        <Text style={styles.editButtonText}>Edit</Text>
+                    </TouchableOpacity>
                 </View>
                 <View style={styles.loadingContainer}>
                     <Text style={styles.loadingText}>Loading meeting details...</Text>
@@ -221,7 +223,9 @@ export default function MeetingDetailScreen() {
                         <Feather name="arrow-left" size={24} color={theme.colorBlack} />
                     </TouchableOpacity>
                     <Text style={styles.title}>Meeting Details</Text>
-                    <View style={styles.placeholder} />
+                    <TouchableOpacity style={styles.editButton}>
+                        <Text style={styles.editButtonText}>Edit</Text>
+                    </TouchableOpacity>
                 </View>
                 <View style={styles.loadingContainer}>
                     <Text style={styles.loadingText}>{meetingState.error}</Text>
@@ -237,13 +241,15 @@ export default function MeetingDetailScreen() {
     const meeting = meetingState.data;
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             <View style={styles.header}>
                 <TouchableOpacity style={styles.closeButton} onPress={handleGoBack}>
                     <Feather name="arrow-left" size={24} color={theme.colorBlack} />
                 </TouchableOpacity>
                 <Text style={styles.title}>Meeting Details</Text>
-                <View style={styles.placeholder} />
+                <TouchableOpacity style={styles.editButton}>
+                    <Text style={styles.editButtonText}>Edit</Text>
+                </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -343,23 +349,6 @@ export default function MeetingDetailScreen() {
                         {meeting.participants.map(renderParticipant)}
                     </View>
                 </View>
-
-                {/* Actions */}
-                <View style={styles.section}>
-                    <View style={styles.actionButtons}>
-                        <TouchableOpacity style={styles.actionButton}>
-                            <Feather name="edit-3" size={18} color={theme.colorNouraBlue} />
-                            <Text style={styles.actionButtonText}>Edit Meeting</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={[styles.actionButton, styles.cancelButton]}>
-                            <Feather name="x-circle" size={18} color="#ff4444" />
-                            <Text style={[styles.actionButtonText, styles.cancelButtonText]}>
-                                Cancel Meeting
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
             </ScrollView>
         </SafeAreaView>
     );
@@ -382,13 +371,18 @@ const styles = StyleSheet.create({
     closeButton: {
         padding: 4,
     },
+    editButton: {
+        padding: 4,
+    },
+    editButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: theme.colorNouraBlue,
+    },
     title: {
         fontSize: 18,
         fontWeight: '600',
         color: theme.colorBlack,
-    },
-    placeholder: {
-        width: 32,
     },
     loadingContainer: {
         flex: 1,
@@ -540,29 +534,5 @@ const styles = StyleSheet.create({
         color: theme.colorNouraBlue,
         fontWeight: '500',
         marginTop: 2,
-    },
-    actionButtons: {
-        gap: 12,
-    },
-    actionButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 16,
-        borderRadius: 12,
-        borderWidth: 1.5,
-        borderColor: theme.colorNouraBlue,
-        gap: 8,
-    },
-    actionButtonText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: theme.colorNouraBlue,
-    },
-    cancelButton: {
-        borderColor: '#ff4444',
-    },
-    cancelButtonText: {
-        color: '#ff4444',
     },
 });

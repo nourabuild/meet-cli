@@ -17,7 +17,6 @@ function AuthLayout() {
     return (
         <React.Fragment>
             <StatusBar style="auto" />
-
             <Stack>
                 <Stack.Protected guard={!isAuthenticated}>
                     <Stack.Screen name="login-user"
@@ -58,11 +57,7 @@ function AuthLayout() {
                         name="+not-found"
                         options={{ headerShown: false }}
                     />
-
-
-
                 </Stack.Protected>
-
             </Stack>
         </React.Fragment>
     );
