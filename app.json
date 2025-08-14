@@ -32,7 +32,15 @@
       "expo-quick-actions",
       "expo-secure-store",
       "expo-tracking-transparency",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Noura to access your camera",
+          "microphonePermission": "Allow Noura to access your microphone",
+          "recordAudioAndroid": true
+        }
+      ]
     ]
   }
 }

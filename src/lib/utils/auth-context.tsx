@@ -4,11 +4,21 @@ import { useReduxSelector, useReduxDispatch } from '@/lib/hooks';
 import { setSession, logout as logoutAction } from '@/stores/user-slice';
 import { UserRepo } from '@/repo';
 
+type AuthState =
+    | { status: "idle" }
+    | { status: "loading" }
+    | { status: "authenticated"; hasCompletedOnboarding: boolean }
+    | { status: "unauthenticated" }
+    | { status: "error"; error: string };
+
 interface AuthContextType {
-    isAuthenticated: boolean | null;
+    authState: AuthState;
     login: (token: string, refreshToken?: string) => Promise<void>;
     logout: () => Promise<void>;
     checkAuth: () => Promise<void>;
+    checkOnboardingStatus: () => Promise<void>;
+    isAuthenticated: boolean;
+    hasCompletedOnboarding: boolean | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -18,23 +28,76 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+    const [authState, setAuthState] = useState<AuthState>({ status: "idle" });
     const user = useReduxSelector((state) => state.user);
     const dispatch = useReduxDispatch();
+    
+    // Computed values for backward compatibility
+    const isAuthenticated = authState.status === "authenticated";
+    const hasCompletedOnboarding = authState.status === "authenticated" ? authState.hasCompletedOnboarding : null;
 
     const checkAuth = useCallback(async () => {
+        setAuthState({ status: "loading" });
         try {
             const token = await SecureStore.getItemAsync('access_token');
             // Check both token existence AND Redux user state
             const hasAuth = !!(token && user);
-            setIsAuthenticated(hasAuth);
+            
+            if (hasAuth) {
+                // Check onboarding status when authenticated
+                const onboardingResult = await UserRepo.GetOnboardingStatus(token);
+                const hasCompletedOnboarding = onboardingResult.success ? (onboardingResult.data.completed || false) : false;
+                
+                setAuthState({ 
+                    status: "authenticated", 
+                    hasCompletedOnboarding 
+                });
+            } else {
+                setAuthState({ status: "unauthenticated" });
+            }
         } catch (error) {
             console.error('Error checking auth:', error);
-            setIsAuthenticated(false);
+            setAuthState({ 
+                status: "error", 
+                error: error instanceof Error ? error.message : "Authentication check failed"
+            });
         }
     }, [user]);
 
+    const checkOnboardingStatus = useCallback(async () => {
+        if (authState.status !== "authenticated") return;
+        
+        try {
+            const token = await SecureStore.getItemAsync('access_token');
+            if (!token) {
+                setAuthState({ status: "unauthenticated" });
+                return;
+            }
+
+            const result = await UserRepo.GetOnboardingStatus(token);
+            if (result.success) {
+                setAuthState({
+                    status: "authenticated",
+                    hasCompletedOnboarding: result.data.completed || false
+                });
+            } else {
+                setAuthState({ 
+                    status: "error", 
+                    error: "Failed to fetch onboarding status"
+                });
+            }
+        } catch (error) {
+            console.error('Error checking onboarding status:', error);
+            setAuthState({ 
+                status: "error", 
+                error: error instanceof Error ? error.message : "Onboarding status check failed"
+            });
+        }
+    }, [authState.status]);
+
     const login = async (token: string, refreshToken?: string) => {
+        setAuthState({ status: "loading" });
+        
         try {
             // Store tokens securely
             await SecureStore.setItemAsync('access_token', token);
@@ -47,7 +110,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 const userResult = await UserRepo.WhoAmI(token);
                 if (userResult.success) {
                     dispatch(setSession(userResult.data));
-                    // Auth state will be updated by the useEffect that watches user state
+                    
+                    // Check onboarding status
+                    const onboardingResult = await UserRepo.GetOnboardingStatus(token);
+                    const hasCompletedOnboarding = onboardingResult.success ? (onboardingResult.data.completed || false) : false;
+                    
+                    setAuthState({
+                        status: "authenticated",
+                        hasCompletedOnboarding
+                    });
                 } else {
                     console.log('User fetch failed during login:', userResult.errors);
                     throw new Error('Failed to fetch user data');
@@ -57,10 +128,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 // Clear tokens if user fetch fails
                 await SecureStore.deleteItemAsync('access_token');
                 await SecureStore.deleteItemAsync('refresh_token');
+                setAuthState({ 
+                    status: "error", 
+                    error: userError instanceof Error ? userError.message : "Login failed"
+                });
                 throw userError;
             }
         } catch (error) {
             console.error('Error during login:', error);
+            setAuthState({ 
+                status: "error", 
+                error: error instanceof Error ? error.message : "Login failed"
+            });
             throw error;
         }
     };
@@ -74,13 +153,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
             await SecureStore.deleteItemAsync('access_token');
             await SecureStore.deleteItemAsync('refresh_token');
 
-            // Set auth state to false
-            setIsAuthenticated(false);
+            // Set auth state to unauthenticated
+            setAuthState({ status: "unauthenticated" });
         } catch (error) {
             console.error('Error during logout:', error);
             // Still clear state even if SecureStore fails
             dispatch(logoutAction());
-            setIsAuthenticated(false);
+            setAuthState({ status: "unauthenticated" });
         }
     };
 
@@ -95,7 +174,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }, [user, checkAuth]);
 
     return (
-        <AuthContext.Provider value={{ isAuthenticated, login, logout, checkAuth }}>
+        <AuthContext.Provider value={{
+            authState,
+            isAuthenticated,
+            hasCompletedOnboarding,
+            login,
+            logout,
+            checkAuth,
+            checkOnboardingStatus
+        }}>
             {children}
         </AuthContext.Provider>
     );

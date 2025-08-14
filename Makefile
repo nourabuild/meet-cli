@@ -5,3 +5,21 @@ run:
 
 check:
 	npx expo install --check $(lib)
+
+
+rm-logs:
+	remove-logs:
+	@find src -type f \( -name "*.js" -o -name "*.ts" -o -name "*.jsx" -o -name "*.tsx" \) \
+		| xargs sed -i '' -E 's/^\s*console\.log\(.*\);\s*$$//g'
+
+# ^\s*console\.log\(.*\);\s*$
+
+# xcrun simctl boot "iPhone 15 Plus"
+# open -a Simulator
+
+
+run2:
+	lsof -i :19001 | awk 'NR!=1 {print $$2}' | xargs -r kill -9
+	expo start --port 19001 
+
+# npx expo run:ios --device "iPhone 15 Plus"

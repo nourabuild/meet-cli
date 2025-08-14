@@ -1,6 +1,5 @@
 import React, { useReducer, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import * as SecureStore from 'expo-secure-store';
@@ -9,7 +8,10 @@ import { theme } from '@/styles/theme';
 import { NouraButton, NouraTimePicker } from '@/lib/components';
 import { Users } from '@/repo/users';
 import { UserRepo, MeetingRepo } from '@/repo';
+import { Meetings } from '@/repo/meetings';
 import { useReduxSelector } from '@/lib/hooks';
+import SafeAreaContainer from '@/lib/utils/safe-area-container';
+import { useThemeColor } from '@/lib/hooks/theme/useThemeColor';
 
 // -------------------------------
 // Form + State Management
@@ -27,6 +29,14 @@ type FormFields = {
     assignedTo: string;
     location: string;
     participants: Users.User[];
+};
+
+type FieldValidationState = {
+    title: boolean;
+    meetingType: boolean;
+    location: boolean;
+    date: boolean;
+    participants: boolean;
 };
 
 const initialFormState: FormFields = {
@@ -67,6 +77,9 @@ function formReducer(state: FormFields, action: { name: keyof FormFields; value:
 
 export default function NewMeeting() {
     const currentUser = useReduxSelector((state) => state.user);
+    
+    const textColor = useThemeColor({}, 'text');
+    const cardColor = useThemeColor({}, 'card');
 
     // Log user's locale information for debugging
     React.useEffect(() => {
@@ -87,6 +100,14 @@ export default function NewMeeting() {
         participants: currentUser ? [currentUser] : []
     });
     const [createMeetingState, setCreateMeetingState] = useState<CreateMeetingState>({ status: "idle" });
+    const [validationErrors, setValidationErrors] = useState<Meetings.ValidationErrors>({});
+    const [touchedFields, setTouchedFields] = useState<FieldValidationState>({
+        title: false,
+        meetingType: false,
+        location: false,
+        date: false,
+        participants: false,
+    });
 
     // Initialize date with proper timezone consideration
     const [date, setDate] = useState(() => {
@@ -109,8 +130,57 @@ export default function NewMeeting() {
     const [searchResults, setSearchResults] = useState<Users.User[]>([]);
     const [isSearching, setIsSearching] = useState(false);
 
+    const handleFieldBlur = (name: keyof FieldValidationState, value: string) => {
+        setTouchedFields(prev => ({ ...prev, [name]: true }));
+        
+        let error: string | undefined;
+        if (name === 'title') error = Meetings.validateTitle(value);
+        else if (name === 'meetingType') error = Meetings.validateType(value);
+        else if (name === 'location') error = Meetings.validateLocation(value);
+        
+        setValidationErrors(prev => ({
+            ...prev,
+            [name === 'meetingType' ? 'type' : name]: error
+        }));
+    };
+
     const handleChange = (name: keyof FormFields, value: string) => {
         dispatch({ name, value });
+        
+        // Real-time validation for touched fields
+        if (touchedFields[name as keyof FieldValidationState]) {
+            let error: string | undefined;
+            if (name === 'title') error = Meetings.validateTitle(value);
+            else if (name === 'meetingType') error = Meetings.validateType(value);
+            else if (name === 'location') error = Meetings.validateLocation(value);
+            
+            setValidationErrors(prev => ({
+                ...prev,
+                [name === 'meetingType' ? 'type' : name]: error
+            }));
+        }
+    };
+
+    const validateAllFields = (): boolean => {
+        const validationResult = Meetings.validateMeetingForm({
+            title: formState.title,
+            type: formState.meetingType,
+            location: formState.location,
+            date: date,
+            participants: formState.participants,
+            currentUserId: currentUser?.id,
+        });
+        
+        setValidationErrors(validationResult);
+        setTouchedFields({
+            title: true,
+            meetingType: true,
+            location: true,
+            date: true,
+            participants: true,
+        });
+        
+        return !Meetings.hasValidationErrors(validationResult);
     };
 
     const handleClose = () => {
@@ -126,6 +196,15 @@ export default function NewMeeting() {
     const handleDatePickerDone = () => {
         setDate(tempDate);
         setShowDatePicker(false);
+        
+        // Validate date if field has been touched
+        if (touchedFields.date) {
+            const error = Meetings.validateDate(tempDate);
+            setValidationErrors(prev => ({
+                ...prev,
+                date: error
+            }));
+        }
     };
 
     const handleDatePickerCancel = () => {
@@ -136,6 +215,9 @@ export default function NewMeeting() {
     const openDatePicker = () => {
         setTempDate(date); // Initialize temp date with current date
         setShowDatePicker(true);
+        
+        // Mark date field as touched when user interacts with it
+        setTouchedFields(prev => ({ ...prev, date: true }));
     };
 
     const formatDate = (date: Date) => {
@@ -182,14 +264,15 @@ export default function NewMeeting() {
     };
 
     const handleCreateMeeting = async () => {
+        // Validate all fields before submission
+        if (!validateAllFields()) {
+            setCreateMeetingState({ status: "error", error: "Please fix the errors above before submitting" });
+            return;
+        }
+        
         setCreateMeetingState({ status: "loading" });
 
         const { title, meetingType, assignedTo, location } = formState;
-
-        if (!title.trim()) {
-            setCreateMeetingState({ status: "error", error: "Meeting title is required" });
-            return;
-        }
 
         try {
             const token = await SecureStore.getItemAsync('access_token');
@@ -235,10 +318,22 @@ export default function NewMeeting() {
 
             const result = await MeetingRepo.CreateMeetingWithParticipants(formData, token);
 
+            console.log("=== API Response ===");
+            console.log("Result:", result);
+
             if (!result.success) {
+                console.error("Meeting creation failed:", result.errors);
+                
+                let errorMessage = "Failed to create meeting";
+                if (Array.isArray(result.errors)) {
+                    errorMessage = result.errors.map(err => `${err.field}: ${err.error}`).join(", ");
+                } else if (typeof result.errors === "string") {
+                    errorMessage = result.errors;
+                }
+                
                 setCreateMeetingState({
                     status: "error",
-                    error: typeof result.errors === "string" ? result.errors : "Failed to create meeting",
+                    error: errorMessage,
                 });
                 return;
             }
@@ -301,104 +396,31 @@ export default function NewMeeting() {
     };
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
+        <SafeAreaContainer edges={['bottom']} style={styles.container}>
             {/* Header with close button */}
             <View style={styles.header}>
-                <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-                    <Feather name="x" size={24} color={theme.colorBlack} />
+                <TouchableOpacity onPress={handleClose}>
+                    <Feather name="x" size={24} color={textColor} />
                 </TouchableOpacity>
-                <Text style={styles.title}>New Meeting</Text>
+                <Text style={[styles.title, { color: textColor }]}>New Meeting</Text>
                 <View style={styles.placeholder} />
             </View>
 
             {/* Form Content */}
             <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
                 <View style={styles.formContainer}>
-                    {/* Meeting Section */}
-                    <View style={styles.section}>
-                        <Text style={styles.sectionHeader}>Details</Text>
-
-                        {/* Meeting Title */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Title</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={formState.title}
-                                onChangeText={(text) => handleChange("title", text)}
-                            />
-                        </View>
-
-                        {/* Meeting Type */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Meeting Type</Text>
-                            <Text style={styles.placeholderText}>e.g., All Hands, One on One, Team Meeting, Standup, or Project Meeting</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={formState.meetingType}
-                                onChangeText={(text) => handleChange("meetingType", text)}
-                            />
-                        </View>
-
-                        {/* Date & Time */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Date & Time</Text>
-
-                            <View style={styles.dateButton}>
-                                <Text style={styles.dateButtonText}>{formatDate(date)}</Text>
-                                <TouchableOpacity
-                                    style={styles.calendarButton}
-                                    onPress={openDatePicker}
-                                >
-                                    <Feather name="calendar" size={20} color={theme.colorNouraBlue} />
-                                </TouchableOpacity>
-                            </View>
-
-                            {showDatePicker && (
-                                <NouraTimePicker
-                                    value={tempDate}
-                                    visible={showDatePicker}
-                                    onChange={onDateChange}
-                                    onConfirm={handleDatePickerDone}
-                                    onCancel={handleDatePickerCancel}
-                                    minimumDate={new Date()}
-                                />
-                            )}
-                        </View>
-
-                        {/* Location */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Location</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={formState.location}
-                                onChangeText={(text) => handleChange("location", text)}
-                            />
-                        </View>
-
-                        {/* Assigned To */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Assigned To (User ID)</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={formState.assignedTo}
-                                onChangeText={(text) => handleChange("assignedTo", text)}
-                                keyboardType="numeric"
-                            />
-                        </View>
-                    </View>
-
                     {/* Participants Section */}
                     <View style={styles.section}>
-                        <Text style={styles.sectionHeader}>Participants</Text>
+                        <Text style={[styles.sectionHeader, { color: textColor }]}>Participants</Text>
 
                         {/* Search Users */}
                         <View style={styles.searchSection}>
-                            <Text style={styles.sectionTitle}>Search</Text>
+                            <Text style={[styles.sectionTitle, { color: textColor }]}>Search</Text>
                             <Text style={styles.placeholderText}>e.g., by name, email, or account</Text>
-                            <View style={styles.searchContainer}>
+                            <View style={[styles.searchContainer, { backgroundColor: cardColor }]}>
                                 <Feather name="search" size={20} color={theme.colorGrey} style={styles.searchIcon} />
                                 <TextInput
-                                    style={styles.searchInput}
+                                    style={[styles.searchInput, { color: textColor }]}
                                     value={searchQuery}
                                     onChangeText={(text) => {
                                         setSearchQuery(text);
@@ -423,7 +445,7 @@ export default function NewMeeting() {
 
                             {/* Search Results */}
                             {searchResults.length > 0 && (
-                                <ScrollView style={styles.searchResults} nestedScrollEnabled={true}>
+                                <ScrollView style={[styles.searchResults, { backgroundColor: cardColor }]} nestedScrollEnabled={true}>
                                     {searchResults.map((user, index) => {
                                         const isAlreadyAdded = formState.participants.find((p: Users.User) => p.id === user.id);
                                         const isLastItem = index === searchResults.length - 1;
@@ -456,6 +478,7 @@ export default function NewMeeting() {
                                                 <View style={styles.userInfo}>
                                                     <Text style={[
                                                         styles.userName,
+                                                        { color: isAlreadyAdded ? theme.colorGrey : textColor },
                                                         isAlreadyAdded && styles.userNameDisabled
                                                     ]}>
                                                         {user.name}
@@ -505,6 +528,16 @@ export default function NewMeeting() {
                                                     style={styles.removeChipButton}
                                                     onPress={() => {
                                                         dispatch({ type: 'REMOVE_PARTICIPANT', participantId: participant.id });
+                                                        
+                                                        // Validate participants after removal if field has been touched
+                                                        if (touchedFields.participants) {
+                                                            const newParticipants = formState.participants.filter(p => p.id !== participant.id);
+                                                            const error = Meetings.validateParticipants(newParticipants, currentUser?.id);
+                                                            setValidationErrors(prev => ({
+                                                                ...prev,
+                                                                participants: error
+                                                            }));
+                                                        }
                                                     }}
                                                 >
                                                     <Feather name="x" size={16} color={theme.colorBlack} />
@@ -514,6 +547,109 @@ export default function NewMeeting() {
                                     );
                                 })}
                             </View>
+                            {validationErrors.participants && touchedFields.participants && (
+                                <Text style={styles.errorText}>{validationErrors.participants}</Text>
+                            )}
+                        </View>
+                    </View>
+
+                    {/* Meeting Section */}
+                    <View style={styles.section}>
+                        <Text style={[styles.sectionHeader, { color: textColor }]}>Details</Text>
+
+                        {/* Meeting Title */}
+                        <View style={styles.inputContainer}>
+                            <Text style={[styles.label, { color: textColor }]}>Title</Text>
+                            <TextInput
+                                style={[
+                                    styles.input,
+                                    { backgroundColor: cardColor, color: textColor },
+                                    validationErrors.title && touchedFields.title && styles.inputError
+                                ]}
+                                value={formState.title}
+                                onChangeText={(text) => handleChange("title", text)}
+                                onBlur={() => handleFieldBlur("title", formState.title)}
+                            />
+                            {validationErrors.title && touchedFields.title && (
+                                <Text style={styles.errorText}>{validationErrors.title}</Text>
+                            )}
+                        </View>
+
+                        {/* Meeting Type */}
+                        <View style={styles.inputContainer}>
+                            <Text style={[styles.label, { color: textColor }]}>Meeting Type</Text>
+                            <Text style={styles.placeholderText}>e.g., All Hands, One on One, Team Meeting, Standup, or Project Meeting</Text>
+                            <TextInput
+                                style={[
+                                    styles.input,
+                                    { backgroundColor: cardColor, color: textColor },
+                                    validationErrors.type && touchedFields.meetingType && styles.inputError
+                                ]}
+                                value={formState.meetingType}
+                                onChangeText={(text) => handleChange("meetingType", text)}
+                                onBlur={() => handleFieldBlur("meetingType", formState.meetingType)}
+                            />
+                            {validationErrors.type && touchedFields.meetingType && (
+                                <Text style={styles.errorText}>{validationErrors.type}</Text>
+                            )}
+                        </View>
+
+                        {/* Date & Time */}
+                        <View style={styles.inputContainer}>
+                            <Text style={[styles.label, { color: textColor }]}>Date & Time</Text>
+
+                            <View style={[styles.dateButton, { backgroundColor: cardColor }]}>
+                                <Text style={[styles.dateButtonText, { color: textColor }]}>{formatDate(date)}</Text>
+                                <TouchableOpacity
+                                    style={styles.calendarButton}
+                                    onPress={openDatePicker}
+                                >
+                                    <Feather name="calendar" size={20} color={theme.colorNouraBlue} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {showDatePicker && (
+                                <NouraTimePicker
+                                    value={tempDate}
+                                    visible={showDatePicker}
+                                    onChange={onDateChange}
+                                    onConfirm={handleDatePickerDone}
+                                    onCancel={handleDatePickerCancel}
+                                    minimumDate={new Date()}
+                                />
+                            )}
+                            {validationErrors.date && touchedFields.date && (
+                                <Text style={styles.errorText}>{validationErrors.date}</Text>
+                            )}
+                        </View>
+
+                        {/* Location */}
+                        <View style={styles.inputContainer}>
+                            <Text style={[styles.label, { color: textColor }]}>Location</Text>
+                            <TextInput
+                                style={[
+                                    styles.input,
+                                    { backgroundColor: cardColor, color: textColor },
+                                    validationErrors.location && touchedFields.location && styles.inputError
+                                ]}
+                                value={formState.location}
+                                onChangeText={(text) => handleChange("location", text)}
+                                onBlur={() => handleFieldBlur("location", formState.location)}
+                            />
+                            {validationErrors.location && touchedFields.location && (
+                                <Text style={styles.errorText}>{validationErrors.location}</Text>
+                            )}
+                        </View>
+
+                        {/* Assigned To */}
+                        <View style={styles.inputContainer}>
+                            <Text style={[styles.label, { color: textColor }]}>Assigned To (User ID)</Text>
+                            <TextInput
+                                style={[styles.input, { backgroundColor: cardColor, color: textColor }]}
+                                value={formState.assignedTo}
+                                onChangeText={(text) => handleChange("assignedTo", text)}
+                                keyboardType="numeric"
+                            />
                         </View>
                     </View>
 
@@ -538,36 +674,31 @@ export default function NewMeeting() {
                         title={createMeetingState.status === "loading" ? "Creating..." : "Create Meeting"}
                         onPress={handleCreateMeeting}
                         loading={createMeetingState.status === "loading"}
-                        disabled={createMeetingState.status === "loading" || createMeetingState.status === "success" || !formState.title.trim()}
+                        disabled={createMeetingState.status === "loading" || createMeetingState.status === "success" || Meetings.hasValidationErrors(validationErrors)}
                         style={styles.createButton}
                     />
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </SafeAreaContainer>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colorWhite,
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
-        paddingVertical: 16,
+        paddingBottom: 10,
         borderBottomWidth: 1,
         borderBottomColor: theme.colorLightGrey,
     },
-    closeButton: {
-        padding: 4,
-    },
     title: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: '600',
-        color: theme.colorBlack,
     },
     placeholder: {
         width: 32, // Same width as close button for centering
@@ -584,7 +715,6 @@ const styles = StyleSheet.create({
     sectionHeader: {
         fontSize: 18,
         fontWeight: '600',
-        color: theme.colorBlack,
         marginBottom: 16,
     },
     inputContainer: {
@@ -593,7 +723,6 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colorBlack,
         marginBottom: 8,
     },
     placeholderText: {
@@ -609,8 +738,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 12,
         fontSize: 16,
-        backgroundColor: theme.colorWhite,
-        color: theme.colorBlack,
     },
     dateButton: {
         flexDirection: 'row',
@@ -621,7 +748,6 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        backgroundColor: theme.colorWhite,
     },
     calendarButton: {
         padding: 4, // Add some padding for better touch target
@@ -630,8 +756,7 @@ const styles = StyleSheet.create({
     },
     dateButtonText: {
         fontSize: 16,
-        color: theme.colorBlack,
-        flex: 1, // Take up remaining space
+        flex: 1,
     },
     searchSection: {
         marginBottom: 20,
@@ -639,7 +764,6 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colorBlack,
         marginBottom: 12,
     },
     searchContainer: {
@@ -648,7 +772,6 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: theme.colorLightGrey,
         borderRadius: 12,
-        backgroundColor: theme.colorWhite,
     },
     searchIcon: {
         marginLeft: 16,
@@ -668,11 +791,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 12,
         fontSize: 16,
-        color: theme.colorBlack,
     },
     searchResults: {
         marginTop: 8,
-        backgroundColor: theme.colorWhite,
         borderRadius: 12,
         borderWidth: 1,
         borderColor: theme.colorLightGrey,
@@ -701,7 +822,6 @@ const styles = StyleSheet.create({
     userName: {
         fontSize: 16,
         fontWeight: '500',
-        color: theme.colorBlack,
         marginBottom: 2,
     },
     userNameDisabled: {
@@ -765,8 +885,6 @@ const styles = StyleSheet.create({
     },
     createButton: {
         backgroundColor: theme.colorNouraBlue,
-        marginBottom: 40,
-
     },
     errorContainer: {
         marginVertical: 16,
@@ -801,5 +919,9 @@ const styles = StyleSheet.create({
         color: '#2e7d32',
         fontSize: 14,
         fontStyle: 'italic',
+    },
+    inputError: {
+        borderColor: '#f44336',
+        borderWidth: 2,
     },
 });

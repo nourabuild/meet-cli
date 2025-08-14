@@ -1,13 +1,14 @@
-import { StyleSheet, Text, View, TouchableOpacity, FlatList, Image, Animated } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, Text, View, TouchableOpacity, FlatList } from "react-native";
 import { router } from "expo-router";
 import Feather from '@expo/vector-icons/Feather';
 import { useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 
+import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 import { theme } from "@/styles/theme";
 import { MeetingRepo } from "@/repo";
 import { Meetings } from "@/repo/meetings";
+import Navbar from "@/lib/utils/navigation-bar";
 
 // -------------------------------
 // State Management
@@ -20,6 +21,12 @@ type MeetingsState =
   | { status: "success"; data: Meetings.Meeting[] };
 
 export default function HomeScreen() {
+  const backgroundColor = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const cardColor = useThemeColor({}, 'card');
+  const borderColor = useThemeColor({}, 'border');
+  const textSecondaryColor = useThemeColor({}, 'textSecondary');
+
   const [meetingsState, setMeetingsState] = useState<MeetingsState>({ status: "idle" });
 
   const fetchMeetings = async () => {
@@ -94,17 +101,17 @@ export default function HomeScreen() {
 
   const renderMeetingCard = ({ item }: { item: Meetings.Meeting }) => (
     <TouchableOpacity
-      style={styles.meetingCard}
+      style={[styles.meetingCard, { backgroundColor: cardColor, borderColor }]}
       onPress={() => router.push(`/meeting-details/${item.id}`)}
       activeOpacity={0.7}
     >
       <View style={styles.meetingHeader}>
         <View style={styles.meetingHeaderLeft}>
-          <Text style={styles.meetingTitle}>{item.title}</Text>
+          <Text style={[styles.meetingTitle, { color: textColor }]}>{item.title}</Text>
           <Text style={styles.meetingTime}>
             {formatMeetingTime(item.start_time)}
           </Text>
-          <Text style={styles.meetingLocation}>
+          <Text style={[styles.meetingLocation, { color: textSecondaryColor }]}>
             {item.location}
           </Text>
         </View>
@@ -117,15 +124,15 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <Text style={styles.meetingDescription} numberOfLines={2}>
+      <Text style={[styles.meetingDescription, { color: textColor }]} numberOfLines={2}>
         Type: {item.meeting_type.title} • Participants: {item.participants.length}
       </Text>
 
       <View style={styles.meetingFooter}>
-        <Text style={styles.statusText}>
+        <Text style={[styles.statusText, { color: textColor }]}>
           Status: {item.status}
         </Text>
-        <Text style={styles.createdText}>
+        <Text style={[styles.createdText, { color: textSecondaryColor }]}>
           Type: {item.meeting_type.title}
         </Text>
       </View>
@@ -137,99 +144,111 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.container}>
-
-        {/* Top Navigation Bar */}
-        <View style={styles.navbar}>
-          <View style={styles.navbarContent}>
-            <View style={styles.navbarLeft}>
-              <Image
-                source={require('../../../assets/icon.png')}
-                style={styles.logoIcon}
-                resizeMode="contain"
-              />
+    <View style={[styles.container, { backgroundColor }]}>
+      <Navbar
+        backgroundColor={backgroundColor}
+      >
+        <View style={styles.navbarContent}>
+          <View style={styles.navbarLeft}>
+            <View style={styles.navbarTitleRow}>
+              <Text style={[styles.navbarTitle, { color: textColor }]}>Upcoming</Text>
+              {/* <Feather name="chevron-down" size={20} color={theme.colorBlack} /> */}
             </View>
-            <TouchableOpacity style={styles.navbarButton} onPress={handleNewPress}>
-              <Feather name="plus" size={24} color={theme.colorDeepSkyBlue} />
-            </TouchableOpacity>
           </View>
+          <TouchableOpacity style={[styles.navbarButton, { backgroundColor: useThemeColor({}, 'tabIconDefault') }]} onPress={handleNewPress} accessibilityLabel="Create event">
+            <Feather name="plus" size={22} color={textColor} />
+          </TouchableOpacity>
         </View>
+      </Navbar>
 
-        {/* Meetings List */}
-        <FlatList
-          data={meetingsState.status === "success" ? meetingsState.data.filter(meeting => meeting.status.toLowerCase() === 'approved') : []}
-          renderItem={renderMeetingCard}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Feather name="calendar" size={48} color={theme.colorGrey} />
-              <Text style={styles.emptyTitle}>
-                {meetingsState.status === "loading" ? "Loading meetings..." :
-                  meetingsState.status === "error" ? "Error loading meetings" :
-                    "No meetings scheduled"}
+      {/* Meetings List */}
+      <FlatList
+        data={meetingsState.status === "success" ? meetingsState.data.filter(meeting => meeting.status.toLowerCase() === 'approved') : []}
+        renderItem={renderMeetingCard}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContainer}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={[styles.emptyCard, { backgroundColor: cardColor, borderColor: borderColor }]}>
+            <View style={styles.emptyCardInner}>
+              <View style={styles.emptyIconWrapper}>
+                <Feather name="calendar" size={28} color={useThemeColor({}, 'textSecondary')} />
+              </View>
+              <Text style={[styles.emptyTitleBig, { color: textColor }]}>
+                {meetingsState.status === "loading" ? "Loading Meetings" :
+                  meetingsState.status === "error" ? "Error Loading" :
+                    "No Upcoming Meetings"}
               </Text>
-              <Text style={styles.emptySubtitle}>
+              <Text style={[styles.emptySubtitleCenter, { color: useThemeColor({}, 'textSecondary') }]}>
                 {meetingsState.status === "loading"
-                  ? "Please wait while we fetch your meetings"
+                  ? "Please wait while we fetch your meetings."
                   : meetingsState.status === "error"
                     ? meetingsState.error
-                    : "Tap the + button to create your first meeting"
-                }
+                    : "Scheduled meetings relevant to you, regardless of your role as organizer or attendee."}
               </Text>
+
+              {meetingsState.status !== "loading" && (
+                <TouchableOpacity style={[styles.emptyCTAButton, { backgroundColor: cardColor, borderColor: borderColor }]} onPress={handleNewPress}>
+                  <Text style={[styles.emptyCTAButtonText, { color: textColor }]}>Create Meeting</Text>
+                </TouchableOpacity>
+              )}
             </View>
-          }
-        />
-      </View>
-    </SafeAreaView>
+          </View>
+        }
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: theme.colorWhite,
-  },
   container: {
     flex: 1,
-    backgroundColor: theme.colorWhite,
-  },
-  navbar: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
   },
   navbarContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 0, // Remove all vertical padding
   },
   navbarLeft: {
     flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    margin: 0, // Remove all margins
   },
-  logoIcon: {
-    width: 32,
-    height: 32,
+  navbarTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    marginRight: 4,
   },
+  navbarTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  // logoIcon: {
+  //   width: 32,
+  //   height: 32,
+  //   margin: 0, // Remove all margins
+  // },
   navbarButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'transparent',
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+    margin: 0, // Remove all margins
+    padding: 0, // Remove all padding
+    borderRadius: 18,
   },
   listContainer: {
-    padding: 20,
+    paddingTop: 20, // Adjusted top padding for symmetry with dynamic island
+    paddingHorizontal: 20,
+    paddingBottom: 20,
   },
   meetingCard: {
-    backgroundColor: theme.colorWhite,
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: theme.colorLightGrey,
     shadowColor: theme.colorBlack,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -248,7 +267,6 @@ const styles = StyleSheet.create({
   meetingTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: theme.colorBlack,
     marginBottom: 4,
   },
   meetingTime: {
@@ -258,7 +276,6 @@ const styles = StyleSheet.create({
   },
   meetingLocation: {
     fontSize: 13,
-    color: theme.colorGrey,
     fontWeight: '500',
     marginTop: 2,
   },
@@ -269,7 +286,6 @@ const styles = StyleSheet.create({
   },
   meetingDescription: {
     fontSize: 14,
-    color: theme.colorGrey,
     lineHeight: 20,
     marginBottom: 16,
   },
@@ -280,31 +296,57 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 14,
-    color: theme.colorBlack,
     fontWeight: '500',
   },
   createdText: {
     fontSize: 14,
-    color: theme.colorGrey,
   },
-  emptyState: {
+
+  emptyCard: {
+    borderRadius: 28,
+    padding: 24,
+    borderWidth: 1,
+  },
+  emptyCardInner: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 40,
+    paddingVertical: 24,
   },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: theme.colorBlack,
+  emptyIconWrapper: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    borderColor: theme.colorLightGrey,
+  },
+  emptyTitleBig: {
+    fontSize: 22,
+    fontWeight: '700',
     textAlign: 'center',
-    marginTop: 16,
+    marginTop: 4,
     marginBottom: 8,
   },
-  emptySubtitle: {
-    fontSize: 16,
-    color: theme.colorGrey,
+  emptySubtitleCenter: {
+    fontSize: 15,
     textAlign: 'center',
     lineHeight: 22,
+    marginBottom: 20,
+    paddingHorizontal: 12,
+  },
+  emptyCTAButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 28,
+    borderWidth: 1,
+    shadowColor: theme.colorBlack,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  emptyCTAButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

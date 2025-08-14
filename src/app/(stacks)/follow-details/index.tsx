@@ -1,7 +1,6 @@
 import { Text, View, StyleSheet, TouchableOpacity, FlatList, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as SecureStore from 'expo-secure-store';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useReducer, useState, useCallback } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 
@@ -9,6 +8,8 @@ import { useReduxSelector } from "@/lib/hooks";
 import { theme } from "@/styles/theme";
 import { FollowRepo } from "@/repo";
 import { Follows } from "@/repo/follows";
+import Navbar from "@/lib/utils/navigation-bar";
+import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 
 type FollowState =
     | { status: "idle" }
@@ -21,6 +22,10 @@ type TabType = 'followers' | 'following';
 export default function FollowTabsScreen() {
     const currentUser = useReduxSelector((state) => state.user);
     const { tab } = useLocalSearchParams<{ tab?: string }>();
+
+    const backgroundColor = useThemeColor({}, 'background');
+    const textColor = useThemeColor({}, 'text');
+    const cardColor = useThemeColor({}, 'card');
 
     const [activeTab, setActiveTab] = useState<TabType>(() => {
         // Set initial tab based on URL parameter, default to 'followers'
@@ -225,7 +230,7 @@ export default function FollowTabsScreen() {
         const isFollowersTab = activeTab === 'followers';
 
         return (
-            <View style={styles.userItem}>
+            <View style={[styles.userItem, { backgroundColor }]}>
                 <TouchableOpacity
                     style={styles.userInfo}
                     onPress={() => router.push(`/(tabs)/(home)/${user.account}`)}
@@ -238,10 +243,10 @@ export default function FollowTabsScreen() {
                     </View>
 
                     <View style={styles.userDetails}>
-                        <Text style={styles.userName}>{user.name}</Text>
+                        <Text style={[styles.userName, { color: textColor }]}>{user.name}</Text>
                         <Text style={styles.userHandle}>@{user.account}</Text>
                         {user.bio && (
-                            <Text style={styles.userBio} numberOfLines={2}>
+                            <Text style={[styles.userBio, { color: textColor }]} numberOfLines={2}>
                                 {user.bio}
                             </Text>
                         )}
@@ -279,7 +284,7 @@ export default function FollowTabsScreen() {
     const renderEmptyState = () => (
         <View style={styles.emptyState}>
             <Feather name="users" size={64} color={theme.colorGrey} />
-            <Text style={styles.emptyStateTitle}>
+            <Text style={[styles.emptyStateTitle, { color: textColor }]}>
                 {activeTab === 'followers' ? 'No Followers' : 'No Following'}
             </Text>
             <Text style={styles.emptyStateText}>
@@ -344,26 +349,31 @@ export default function FollowTabsScreen() {
     const followingCount = followingState.status === 'success' ? followingState.data.count : 0;
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            <View style={styles.header}>
-                <TouchableOpacity
-                    style={styles.backButton}
-                    onPress={() => router.back()}
-                >
-                    <Feather name="arrow-left" size={24} color={theme.colorBlack} />
-                </TouchableOpacity>
-                <Text style={styles.title}>{currentUser?.account || 'Profile'}</Text>
-                <View style={styles.headerSpacer} />
-            </View>
-
+        <View style={[styles.container, { backgroundColor }]}>
+            {/* Header */}
+            <Navbar
+                backgroundColor={backgroundColor}
+            >
+                <View style={styles.header}>
+                    <TouchableOpacity
+                        onPress={() => router.back()}
+                    >
+                        <Feather name="arrow-left" size={24} color={textColor} />
+                    </TouchableOpacity>
+                    <Text style={[styles.title, { color: textColor }]}>{currentUser?.account || 'Profile'}</Text>
+                    <View style={styles.headerSpacer} />
+                </View>
+            </Navbar>
             {/* Tab Navigation */}
-            <View style={styles.tabContainer}>
+            <View style={[styles.tabContainer, { backgroundColor: cardColor }]}>
                 <TouchableOpacity
                     style={[styles.tab, activeTab === 'followers' && styles.activeTab]}
                     onPress={() => setActiveTab('followers')}
                     activeOpacity={0.7}
                 >
-                    <Text style={[styles.tabText, activeTab === 'followers' && styles.activeTabText]}>
+                    <Text
+                        style={[styles.tabText, { color: textColor }]}
+                    >
                         {followersCount} Followers
                     </Text>
                 </TouchableOpacity>
@@ -373,48 +383,43 @@ export default function FollowTabsScreen() {
                     onPress={() => setActiveTab('following')}
                     activeOpacity={0.7}
                 >
-                    <Text style={[styles.tabText, activeTab === 'following' && styles.activeTabText]}>
+                    <Text
+                        style={[styles.tabText, { color: textColor }]}
+                    >
                         {followingCount} Following
                     </Text>
                 </TouchableOpacity>
             </View>
 
             {/* Content Header */}
-            <View style={styles.contentHeader}>
-                <Text style={styles.contentTitle}>
+            <View style={[styles.contentHeader, { backgroundColor }]}>
+                <Text style={[styles.contentTitle, { color: textColor }]}>
                     {activeTab === 'followers' ? 'All followers' : 'All following'}
                 </Text>
             </View>
 
             {/* Content */}
-            <View style={styles.content}>
+            <View style={[styles.content, { backgroundColor }]}>
                 {renderContent()}
             </View>
-        </SafeAreaView>
+        </View >
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colorWhite,
     },
     header: {
         flexDirection: 'row',
+        paddingBottom: 10,
         alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-        backgroundColor: theme.colorWhite,
-    },
-    backButton: {
-        padding: 8,
-        marginLeft: -8,
+
     },
     title: {
         flex: 1,
         fontSize: 20,
         fontWeight: "bold",
-        color: theme.colorBlack,
         textAlign: 'center',
     },
     headerSpacer: {
@@ -422,14 +427,11 @@ const styles = StyleSheet.create({
     },
     tabContainer: {
         flexDirection: 'row',
-        backgroundColor: theme.colorWhite,
         paddingHorizontal: 20,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colorLightGrey,
     },
     tab: {
         flex: 1,
-        paddingVertical: 16,
+        paddingVertical: 10,
         alignItems: 'center',
         borderBottomWidth: 2,
         borderBottomColor: 'transparent',
@@ -440,24 +442,20 @@ const styles = StyleSheet.create({
     tabText: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colorGrey,
     },
-    activeTabText: {
-        color: theme.colorBlack,
-    },
+    // activeTabText: { // unused, removed
+    //     color: theme.colorBlack,
+    // },
     contentHeader: {
         paddingHorizontal: 20,
-        paddingVertical: 16,
-        backgroundColor: theme.colorWhite,
+        paddingVertical: 10,
     },
     contentTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: theme.colorBlack,
     },
     content: {
         flex: 1,
-        backgroundColor: theme.colorWhite,
     },
     listContainer: {
         paddingHorizontal: 20,
@@ -465,7 +463,7 @@ const styles = StyleSheet.create({
     userItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 16,
+        paddingVertical: 10,
     },
     userInfo: {
         flexDirection: 'row',
@@ -473,9 +471,9 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     avatarFallback: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         backgroundColor: theme.colorNouraBlue,
         justifyContent: 'center',
         alignItems: 'center',
@@ -492,7 +490,6 @@ const styles = StyleSheet.create({
     userName: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colorBlack,
         marginBottom: 2,
     },
     userHandle: {
@@ -502,7 +499,6 @@ const styles = StyleSheet.create({
     },
     userBio: {
         fontSize: 14,
-        color: theme.colorBlack,
         lineHeight: 18,
     },
     followButton: {
@@ -513,7 +509,9 @@ const styles = StyleSheet.create({
         minWidth: 80,
     },
     unfollowButton: {
-        backgroundColor: theme.colorGrey,
+        backgroundColor: 'transparent', // Remove background color
+        borderWidth: 2,
+        borderColor: theme.colorBlack, // Set border color to grey
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 20,
@@ -529,7 +527,7 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     unfollowButtonText: {
-        color: theme.colorWhite,
+        color: theme.colorBlack, // Change text color to black
         fontSize: 14,
         fontWeight: '600',
         textAlign: 'center',
@@ -575,9 +573,10 @@ const styles = StyleSheet.create({
     },
     emptyState: {
         flex: 1,
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         alignItems: 'center',
-        paddingHorizontal: 40,
+        paddingHorizontal: 20,
+        paddingTop: 80,
     },
     emptyListContainer: {
         flex: 1,
@@ -586,7 +585,6 @@ const styles = StyleSheet.create({
     emptyStateTitle: {
         fontSize: 20,
         fontWeight: 'bold',
-        color: theme.colorBlack,
         marginTop: 16,
         marginBottom: 8,
     },

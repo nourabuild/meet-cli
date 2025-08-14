@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Text, StyleSheet, View, TouchableOpacity, Alert, FlatList } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import * as SecureStore from 'expo-secure-store';
 
+import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 import { theme } from '@/styles/theme';
 import { MeetingRepo } from '@/repo';
 import { Meetings } from '@/repo/meetings';
+import Navbar from "@/lib/utils/navigation-bar";
 
 // -------------------------------
 // State Management
@@ -34,6 +35,13 @@ type ActionState =
     | { status: "success" };
 
 export default function RequestsScreen() {
+    const backgroundColor = useThemeColor({}, 'background');
+    const textColor = useThemeColor({}, 'text');
+    const cardColor = useThemeColor({}, 'card');
+    const borderColor = useThemeColor({}, 'border');
+    const textSecondaryColor = useThemeColor({}, 'textSecondary');
+
+
     const [activeTab, setActiveTab] = useState<RequestStatus>('new');
     const [requestsState, setRequestsState] = useState<RequestsState>({ status: "idle" });
     const [actionState, setActionState] = useState<ActionState>({ status: "idle" });
@@ -266,7 +274,8 @@ export default function RequestsScreen() {
 
     const renderRequestCard = ({ item }: { item: ParticipantWithMeeting }) => (
         <TouchableOpacity
-            style={styles.requestCard}
+            style={[styles.requestCard, { backgroundColor: cardColor, borderColor }]}
+
             onPress={() => router.push(`/meeting-details/${item.meeting_id}`)}
             activeOpacity={0.7}
         >
@@ -274,8 +283,8 @@ export default function RequestsScreen() {
             <View style={styles.requestHeader}>
                 <View style={styles.requestHeaderLeft}>
                     <View style={styles.requesterInfo}>
-                        <Text style={styles.requesterName}>{item.meeting.title}</Text>
-                        <Text style={styles.requestTime}>
+                        <Text style={[styles.requesterName, { color: textColor }]}>{item.meeting.title}</Text>
+                        <Text style={[styles.requestTime, { color: textSecondaryColor }]}>
                             Created {formatDate(item.created_at)}
                         </Text>
                     </View>
@@ -302,14 +311,14 @@ export default function RequestsScreen() {
 
             {/* Meeting Details */}
             <View style={styles.meetingDetails}>
-                <Text style={styles.meetingDescription}>
+                <Text style={[styles.meetingDescription, { color: textSecondaryColor }]}>
                     {item.meeting.meeting_type.title} • Location: {item.meeting.location || 'TBD'}
                 </Text>
 
                 <View style={styles.meetingMeta}>
                     <View style={styles.metaItem}>
                         <Feather name="user" size={16} color={theme.colorGrey} />
-                        <Text style={styles.metaText}>
+                        <Text style={[styles.metaText, { color: textSecondaryColor }]}>
                             Owner: {
                                 // Find the owner among participants
                                 item.meeting.participants?.find(p => p.user_id === item.meeting.owner_id)?.user.name ||
@@ -329,7 +338,7 @@ export default function RequestsScreen() {
                         disabled={actionState.status === "loading"}
                     >
                         <Feather name="x" size={18} color={theme.colorGrey} />
-                        <Text style={styles.rejectButtonText}>Decline</Text>
+                        <Text style={[styles.rejectButtonText, { color: textColor }]}>Decline</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -346,20 +355,24 @@ export default function RequestsScreen() {
     );
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={[styles.container, { backgroundColor }]}>
             {/* Header */}
-            <View style={styles.header}>
-                <Text style={styles.title}>Meeting Requests</Text>
-            </View>
+            <Navbar
+                backgroundColor={backgroundColor}
+            >
+                <View style={styles.header}>
+                    <Text style={[styles.title, { color: textColor }]}>Requests</Text>
+                </View>
+            </Navbar>
 
             {/* Tab Navigation */}
-            <View style={styles.tabContainer}>
+            <View style={[styles.tabContainer, { backgroundColor: cardColor, borderBottomColor: useThemeColor({}, 'border') }]}>
                 <TouchableOpacity
                     style={[styles.tab, activeTab === 'new' && styles.activeTab]}
                     onPress={() => setActiveTab('new')}
                     activeOpacity={0.7}
                 >
-                    <Text style={[styles.tabText, activeTab === 'new' && styles.activeTabText]}>
+                    <Text style={[styles.tabText, { color: useThemeColor({}, 'textSecondary') }, activeTab === 'new' && { color: textColor }]}>
                         {getTabCount('new')} New
                     </Text>
                 </TouchableOpacity>
@@ -369,7 +382,7 @@ export default function RequestsScreen() {
                     onPress={() => setActiveTab('declined')}
                     activeOpacity={0.7}
                 >
-                    <Text style={[styles.tabText, activeTab === 'declined' && styles.activeTabText]}>
+                    <Text style={[styles.tabText, { color: useThemeColor({}, 'textSecondary') }, activeTab === 'declined' && { color: textColor }]}>
                         {getTabCount('declined')} Declined
                     </Text>
                 </TouchableOpacity>
@@ -387,12 +400,12 @@ export default function RequestsScreen() {
                         <Feather
                             name={activeTab === 'pending' ? 'inbox' : 'x-circle'}
                             size={48}
-                            color={theme.colorGrey}
+                            color={useThemeColor({}, 'textSecondary')}
                         />
-                        <Text style={styles.emptyTitle}>
+                        <Text style={[styles.emptyTitle, { color: textColor }]}>
                             {isLoading ? "Loading requests..." : `No ${activeTab} requests`}
                         </Text>
-                        <Text style={styles.emptySubtitle}>
+                        <Text style={[styles.emptySubtitle, { color: useThemeColor({}, 'textSecondary') }]}>
                             {isLoading
                                 ? 'Please wait while we fetch your requests'
                                 : activeTab === 'pending'
@@ -403,34 +416,31 @@ export default function RequestsScreen() {
                     </View>
                 }
             />
-        </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colorWhite,
     },
     header: {
-        paddingHorizontal: 20,
-        paddingVertical: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     title: {
-        fontSize: 24,
+        fontSize: 28,
+        paddingBottom: 10,
         fontWeight: "bold",
-        color: theme.colorBlack,
     },
     tabContainer: {
         flexDirection: 'row',
-        backgroundColor: theme.colorWhite,
         paddingHorizontal: 20,
         borderBottomWidth: 1,
-        borderBottomColor: theme.colorLightGrey,
     },
     tab: {
         flex: 1,
-        paddingVertical: 16,
+        paddingVertical: 10,
         alignItems: 'center',
         borderBottomWidth: 2,
         borderBottomColor: 'transparent',
@@ -441,22 +451,16 @@ const styles = StyleSheet.create({
     tabText: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colorGrey,
-    },
-    activeTabText: {
-        color: theme.colorBlack,
     },
     listContainer: {
         padding: 20,
         paddingTop: 16,
     },
     requestCard: {
-        backgroundColor: theme.colorWhite,
         borderRadius: 16,
         padding: 20,
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: theme.colorLightGrey,
         shadowColor: theme.colorBlack,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
@@ -480,12 +484,10 @@ const styles = StyleSheet.create({
     requesterName: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colorBlack,
         marginBottom: 2,
     },
     requestTime: {
         fontSize: 14,
-        color: theme.colorGrey,
     },
     statusBadge: {
         borderRadius: 20,
@@ -525,7 +527,6 @@ const styles = StyleSheet.create({
     },
     meetingDescription: {
         fontSize: 14,
-        color: theme.colorGrey,
         lineHeight: 20,
         marginBottom: 12,
     },
@@ -540,7 +541,6 @@ const styles = StyleSheet.create({
     },
     metaText: {
         fontSize: 14,
-        color: theme.colorGrey,
         fontWeight: '500',
     },
     actionButtons: {
@@ -567,7 +567,6 @@ const styles = StyleSheet.create({
     rejectButtonText: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colorBlack,
     },
     approveButtonText: {
         fontSize: 16,
@@ -578,19 +577,17 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         paddingVertical: 80,
-        paddingHorizontal: 40,
+        paddingHorizontal: 20,
     },
     emptyTitle: {
         fontSize: 20,
         fontWeight: '600',
-        color: theme.colorBlack,
         textAlign: 'center',
         marginTop: 16,
         marginBottom: 8,
     },
     emptySubtitle: {
         fontSize: 16,
-        color: theme.colorGrey,
         textAlign: 'center',
         lineHeight: 22,
     },

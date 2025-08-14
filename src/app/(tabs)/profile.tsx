@@ -1,14 +1,16 @@
-import { Text, View, StyleSheet, Image, ScrollView, TouchableOpacity } from "react-native";
+import { Text, View, StyleSheet, Image, ScrollView, TouchableOpacity, Alert } from "react-native";
 import { router } from "expo-router";
 import * as SecureStore from 'expo-secure-store';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useReducer, useRef } from 'react';
 import Feather from '@expo/vector-icons/Feather';
+import { useCameraPermissions } from 'expo-camera';
 
 import { useReduxSelector } from "@/lib/hooks";
+import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 import { theme } from "@/styles/theme";
 
 import { FollowRepo } from "@/repo";
+import Navbar from "@/lib/utils/navigation-bar";
 
 // -------------------------------
 // State Management
@@ -55,7 +57,12 @@ function profileDataReducer(state: ProfileData, action: { type: string; data: Pa
 }
 
 export default function ProfileScreen() {
+    const backgroundColor = useThemeColor({}, 'background');
+    const textColor = useThemeColor({}, 'text');
+    const cardColor = useThemeColor({}, 'card');
+
     const currentUser = useReduxSelector((state) => state.user);
+    const [permission, requestPermission] = useCameraPermissions();
 
     // State management using reducers (same pattern as login/register)
     const [profileData, dispatchProfileData] = useReducer(profileDataReducer, initialProfileData);
@@ -160,6 +167,26 @@ export default function ProfileScreen() {
             .slice(0, 2);
     };
 
+    const handleCameraPress = async () => {
+        if (!permission?.granted) {
+            const result = await requestPermission();
+            if (!result.granted) {
+                Alert.alert('Permission required', 'Camera permission is needed to take photos.');
+                return;
+            }
+        }
+
+        Alert.alert(
+            'Add Photo',
+            'Choose an option',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Camera', onPress: () => console.log('Opening camera...') },
+                { text: 'Gallery', onPress: () => console.log('Opening gallery...') }
+            ]
+        );
+    };
+
 
 
     const formatFollowerCount = (count: number): string => {
@@ -172,16 +199,19 @@ export default function ProfileScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
-            <View style={styles.header}>
-                <Text style={styles.title}>{currentUser?.account || 'Profile'}</Text>
-                <TouchableOpacity
-                    style={styles.settingsButton}
-                    onPress={() => router.push('/profile-settings')}
-                >
-                    <Feather name="settings" size={24} color={theme.colorBlack} />
-                </TouchableOpacity>
-            </View>
+        <View style={[styles.container, { backgroundColor }]}>
+            <Navbar
+                backgroundColor={backgroundColor}
+            >
+                <View style={styles.header}>
+                    <Text style={[styles.title, { color: textColor }]}>{currentUser?.account || 'Profile'}</Text>
+                    <TouchableOpacity
+                        onPress={() => router.push('/profile-settings')}
+                    >
+                        <Feather name="settings" size={24} color={textColor} />
+                    </TouchableOpacity>
+                </View>
+            </Navbar>
 
             <ScrollView
                 style={styles.scrollView}
@@ -199,20 +229,23 @@ export default function ProfileScreen() {
                                         style={styles.avatar}
                                     />
                                 ) : (
-                                    <View style={styles.avatarFallback}>
-                                        <Text style={styles.avatarInitials}>
+                                    <View style={[styles.avatarFallback, { backgroundColor: theme.colorNouraBlue }]}>
+                                        <Text style={[styles.avatarInitials, { color: theme.colorWhite }]}>
                                             {getInitials(currentUser.name)}
                                         </Text>
                                     </View>
                                 )}
                                 {/* Add Photo Button */}
-                                <TouchableOpacity style={styles.addPhotoButton}>
+                                <TouchableOpacity
+                                    style={[styles.addPhotoButton, { backgroundColor: theme.colorNouraBlue, borderColor: cardColor }]}
+                                    onPress={handleCameraPress}
+                                >
                                     <Feather name="plus" size={16} color={theme.colorWhite} />
                                 </TouchableOpacity>
                             </View>
                             <View style={styles.nameAndStatsSection}>
                                 <View style={styles.nameAndButtonRow}>
-                                    <Text style={styles.displayName}>{currentUser.name}</Text>
+                                    <Text style={[styles.displayName, { color: textColor }]}>{currentUser.name}</Text>
                                 </View>
                                 {/* Stats Row */}
                                 <View style={styles.statsRow}>
@@ -221,20 +254,20 @@ export default function ProfileScreen() {
                                         onPress={() => router.push('/follow-details?tab=followers')}
                                         activeOpacity={0.7}
                                     >
-                                        <Text style={styles.statNumber}>
+                                        <Text style={[styles.statNumber, { color: textColor }]}>
                                             {profileState.status === "loading" ? '...' : formatFollowerCount(profileData.followersCount)}
                                         </Text>
-                                        <Text style={styles.statLabel}>followers</Text>
+                                        <Text style={[styles.statLabel, { color: theme.colorGrey }]}>followers</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={styles.statItem}
                                         onPress={() => router.push('/follow-details?tab=following')}
                                         activeOpacity={0.7}
                                     >
-                                        <Text style={styles.statNumber}>
+                                        <Text style={[styles.statNumber, { color: textColor }]}>
                                             {profileState.status === "loading" ? '...' : formatFollowerCount(profileData.followingCount)}
                                         </Text>
-                                        <Text style={styles.statLabel}>following</Text>
+                                        <Text style={[styles.statLabel, { color: theme.colorGrey }]}>following</Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
@@ -255,35 +288,26 @@ export default function ProfileScreen() {
                 )}
 
                 {/* Edit Profile Button */}
-                <TouchableOpacity style={styles.editButton}>
-                    <Text style={styles.editButtonText}>Edit profile</Text>
+                <TouchableOpacity style={[styles.editButton, { backgroundColor: cardColor }]}>
+                    <Text style={[styles.editButtonText, { color: textColor }]}>Edit profile</Text>
                 </TouchableOpacity>
-
-
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colorWhite,
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
     },
     title: {
-        fontSize: 24,
+        fontSize: 28,
         fontWeight: "bold",
-        color: theme.colorBlack,
-    },
-    settingsButton: {
-        padding: 8,
     },
     scrollView: {
         flex: 1,
@@ -292,13 +316,13 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
     },
     profileContent: {
-        paddingHorizontal: 24,
-        paddingTop: 16,
+        paddingHorizontal: 20,
+        paddingTop: 20,
     },
     avatarAndNameSection: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-        marginBottom: 24,
+        marginBottom: 20,
     },
     avatarContainer: {
         marginRight: 16,
@@ -314,14 +338,12 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: theme.colorNouraBlue,
         justifyContent: 'center',
         alignItems: 'center',
     },
     avatarInitials: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: theme.colorWhite,
     },
     addPhotoButton: {
         position: 'absolute',
@@ -330,11 +352,9 @@ const styles = StyleSheet.create({
         width: 24,
         height: 24,
         borderRadius: 12,
-        backgroundColor: theme.colorNouraBlue,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: theme.colorWhite,
     },
     nameAndStatsSection: {
         flex: 1,
@@ -347,21 +367,15 @@ const styles = StyleSheet.create({
     displayName: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: theme.colorBlack,
     },
     editButton: {
-        backgroundColor: theme.colorLightGrey,
         borderRadius: 6,
         paddingVertical: 8,
-        paddingHorizontal: 16,
-        marginHorizontal: 24,
-        marginTop: 8,
-        marginBottom: 8,
+        marginHorizontal: 20,
     },
     editButtonText: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colorBlack,
         textAlign: 'center',
     },
     statsRow: {
@@ -375,17 +389,14 @@ const styles = StyleSheet.create({
     statNumber: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: theme.colorBlack,
         marginBottom: 2,
     },
     statLabel: {
         fontSize: 14,
-        color: theme.colorGrey,
         fontWeight: '400',
     },
     bio: {
         fontSize: 16,
-        color: theme.colorBlack,
         textAlign: 'left',
         lineHeight: 22,
         marginBottom: 24,

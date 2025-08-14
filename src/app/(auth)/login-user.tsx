@@ -9,15 +9,15 @@ import {
     TouchableOpacity,
 } from "react-native";
 import { Link } from "expo-router";
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
-
 import { theme } from "@/styles/theme";
 import { NouraButton, NouraImage } from "@/lib/components";
 import { usePasswordVisibility } from "@/lib/hooks";
 import { useAuth } from "@/lib/utils/auth-context";
 import { AuthRepo } from "@/repo";
 import { Auths } from "@/repo/auths";
+import SafeAreaContainer from "@/lib/utils/safe-area-container";
+import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 
 // -------------------------------
 // Form + State Management
@@ -53,6 +53,10 @@ function formReducer(state: FormFields, action: { name: keyof FormFields; value:
 function LoginScreen() {
     const { visible, toggleVisibility } = usePasswordVisibility();
     const { login } = useAuth();
+    
+    const backgroundColor = useThemeColor({}, 'background');
+    const textColor = useThemeColor({}, 'text');
+    const cardColor = useThemeColor({}, 'card');
 
     const [formState, dispatch] = useReducer(formReducer, initialFormState);
     const [loginState, setLoginState] = useState<LoginState>({ status: "idle" });
@@ -64,45 +68,31 @@ function LoginScreen() {
     const handleLogin = async () => {
         setLoginState({ status: "loading" });
 
-        const { email, password } = formState;
+        const formData = new FormData();
+        formData.append("email", formState.email);
+        formData.append("password", formState.password);
 
-        if (!email.trim() || !password.trim()) {
-            setLoginState({ status: "error", error: "Required field missing" });
-            return;
-        }
+        const result = await AuthRepo.AuthenticateUser(formData);
 
-        try {
-            const formData = new FormData();
-            formData.append("email", email);
-            formData.append("password", password);
-
-            const result = await AuthRepo.AuthenticateUser(formData);
-
-            if (!result.success) {
-                setLoginState({
-                    status: "error",
-                    error: typeof result.errors === "string" ? result.errors : "Login failed",
-                });
-                return;
-            }
-
+        if (result.success && result.data) {
             setLoginState({ status: "success", data: result.data });
-
             await login(result.data.access_token, result.data.refresh_token);
-        } catch (error) {
-            console.error("Login error:", error);
-            setLoginState({
-                status: "error",
-                error:
-                    error instanceof Error
-                        ? error.message
-                        : "Network error. Please check your connection and try again.",
-            });
+        } else {
+            const errorMessage = result.success
+                ? "NO_TOKEN_RECEIVED"
+                : typeof result.errors === "string"
+                    ? result.errors
+                    : result.errors.map(e => e.error).join(", ");
+
+            setLoginState({ status: "error", error: errorMessage });
         }
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaContainer
+            edges={['bottom']}
+            backgroundColor={backgroundColor}
+            style={styles.container}>
             <KeyboardAvoidingView
                 style={styles.keyboardContainer}
                 behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -117,13 +107,13 @@ function LoginScreen() {
                         showLoadingIndicator={false}
                     />
 
-                    <Text style={styles.title}>Welcome Back</Text>
-                    <Text style={styles.subtitle}>Sign in to your account</Text>
+                    <Text style={[styles.title, { color: textColor }]}>Welcome Back</Text>
+                    <Text style={[styles.subtitle, { color: textColor }]}>Sign in to your account</Text>
 
                     <View style={styles.inputContainer}>
-                        <Text style={styles.label}>Email</Text>
+                        <Text style={[styles.label, { color: textColor }]}>Email</Text>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, { backgroundColor: cardColor, color: textColor }]}
                             value={formState.email}
                             onChangeText={(text) => handleChange("email", text)}
                             autoCapitalize="none"
@@ -133,10 +123,10 @@ function LoginScreen() {
                     </View>
 
                     <View style={styles.inputContainer}>
-                        <Text style={styles.label}>Password</Text>
-                        <View style={styles.passwordInputContainer}>
+                        <Text style={[styles.label, { color: textColor }]}>Password</Text>
+                        <View style={[styles.passwordInputContainer, { backgroundColor: cardColor }]}>
                             <TextInput
-                                style={styles.passwordInput}
+                                style={[styles.passwordInput, { color: textColor }]}
                                 secureTextEntry={!visible}
                                 value={formState.password}
                                 onChangeText={(text) => handleChange("password", text)}
@@ -162,7 +152,7 @@ function LoginScreen() {
                         </View>
                     )}
 
-                    <Text style={styles.forgotPassword}>Forgot Password?</Text>
+                    <Text style={[styles.forgotPassword, { color: textColor }]}>Forgot Password?</Text>
 
                     <NouraButton
                         title={loginState.status === "loading" ? "Signing In..." : "Sign In"}
@@ -173,14 +163,14 @@ function LoginScreen() {
                     />
 
                     <View style={styles.signupContainer}>
-                        <Text style={styles.signupText}>Don&apos;t have an account? </Text>
+                        <Text style={[styles.signupText, { color: textColor }]}>Don&apos;t have an account? </Text>
                         <Link href="/register-user" style={styles.signupLink}>
                             <Text style={styles.signupLinkText}>Sign Up</Text>
                         </Link>
                     </View>
                 </View>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </SafeAreaContainer>
     );
 }
 
@@ -193,7 +183,6 @@ export default LoginScreen;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colorWhite,
     },
     keyboardContainer: {
         flex: 1,
@@ -220,7 +209,6 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 32,
         fontWeight: "bold",
-        color: theme.colorBlack,
         textAlign: "center",
         marginBottom: 8,
     },
@@ -236,7 +224,6 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 16,
         fontWeight: "600",
-        color: theme.colorBlack,
         marginBottom: 8,
     },
     input: {
@@ -246,7 +233,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 12,
         fontSize: 16,
-        backgroundColor: theme.colorWhite,
     },
     passwordInputContainer: {
         position: 'relative',
@@ -260,9 +246,8 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        paddingRight: 50, // Make room for the eye icon
+        paddingRight: 50,
         fontSize: 16,
-        backgroundColor: theme.colorWhite,
     },
     eyeIcon: {
         position: 'absolute',
@@ -299,7 +284,6 @@ const styles = StyleSheet.create({
     },
     signupText: {
         fontSize: 14,
-        color: theme.colorGrey,
     },
     signupLink: {
         marginLeft: 4,

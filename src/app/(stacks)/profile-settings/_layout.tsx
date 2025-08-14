@@ -20,6 +20,18 @@ export default function ProfileSettingsLayout() {
                     headerShown: false,
                 }}
             />
+            <Stack.Screen
+                name="personal"
+                options={{
+                    headerShown: false,
+                }}
+            />
+            <Stack.Screen
+                name="preferences"
+                options={{
+                    headerShown: false,
+                }}
+            />
         </Stack>
     );
 }

@@ -48,11 +48,13 @@ export namespace Follows {
     export type Response = SuccessResponse | FailureResponse;
 }
 
+const API_ROUTE_DOMAIN = "api/v1/follow";
+
 
 const NewFollowRepository = (host: string): FollowRepository => {
     return {
         FollowUser: async (id: string, token: string): Promise<Follows.Response> => {
-            const req = await fetch(`${host}/api/v1/follow/${id}/add`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/${id}/start`, {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -76,7 +78,7 @@ const NewFollowRepository = (host: string): FollowRepository => {
         },
 
         UnfollowUser: async (id: string, token: string): Promise<Follows.Response> => {
-            const req = await fetch(`${host}/api/v1/follow/${id}/remove`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/${id}/stop`, {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -100,7 +102,7 @@ const NewFollowRepository = (host: string): FollowRepository => {
         },
 
         GetFollowers: async (id: string, token: string): Promise<Follows.Response> => {
-            const req = await fetch(`${host}/api/v1/follow/me/followers`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/me/followers/list`, {
                 method: "GET",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -124,7 +126,7 @@ const NewFollowRepository = (host: string): FollowRepository => {
         },
 
         GetFollowing: async (id: string, token: string): Promise<Follows.Response> => {
-            const req = await fetch(`${host}/api/v1/follow/me/following`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/me/following/list`, {
                 method: "GET",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -147,7 +149,7 @@ const NewFollowRepository = (host: string): FollowRepository => {
             } satisfies Follows.Response;
         },
         GetUsersFollowCount: async (id: string, token: string): Promise<Follows.Response> => {
-            const req = await fetch(`${host}/api/v1/follow/status/${id}/count`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/${id}/stats/view`, {
                 method: "GET",
                 headers: {
                     Authorization: `Bearer ${token}`,

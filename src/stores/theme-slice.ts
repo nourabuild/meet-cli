@@ -11,7 +11,7 @@ interface ThemeState {
 }
 
 const initialState: ThemeState = {
-    selectedMode: 'system',
+    selectedMode: 'light',
     mode: 'light',
 };
 
@@ -23,7 +23,7 @@ const themeSlice = createSlice({
             state.selectedMode = action.payload;
             if (action.payload === 'system') {
                 state.mode = Appearance.getColorScheme() || 'light';
-                AsyncStorage.removeItem('themeMode');
+                AsyncStorage.setItem('themeMode', 'system');
             } else {
                 state.mode = action.payload;
                 AsyncStorage.setItem('themeMode', action.payload);

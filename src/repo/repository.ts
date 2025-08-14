@@ -11,9 +11,16 @@ export interface AuthRepository {
 
 export interface UserRepository {
     GetByAccount: (account: string, token: string) => Promise<Users.Response>;
+    GetOnboardingStatus: (token: string) => Promise<Users.OnboardingResponse>;
     WhoAmI: (token: string) => Promise<Users.Response>;
     SearchUsers: (query: string, token: string, signal: AbortSignal) => Promise<Users.SearchResponse>;
     UpdateUser: (formData: FormData, token: string) => Promise<Users.Response>;
+    DeleteUserWeeklyAvailabilityById: (calendarId: string, token: string) => Promise<Users.Response>;
+    GetUserWeeklyAvailability: (token: string) => Promise<Users.Response>;
+    GetUserExceptionDates: (token: string) => Promise<Users.Response>;
+    AddUserExceptionDate: (formData: FormData, token: string) => Promise<Users.Response>;
+    AddUserAvailability: (formData: FormData, token: string) => Promise<Users.Response>;
+    AddUserWeeklyAvailability: (dayOfWeek: number, intervals: any[], token: string) => Promise<Users.Response>;
 };
 
 export interface FollowRepository {

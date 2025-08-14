@@ -10,13 +10,14 @@ import {
     TouchableOpacity,
 } from "react-native";
 import { Link, router } from "expo-router";
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 
 import { theme } from "@/styles/theme";
 import { NouraButton, NouraImage } from "@/lib/components";
 import { AuthRepo } from "@/repo";
 import { usePasswordVisibility } from "@/lib/hooks";
+import SafeAreaContainer from "@/lib/utils/safe-area-container";
+import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 
 // -------------------------------
 // Form + State Management
@@ -67,6 +68,10 @@ function RegisterScreen() {
         visible: confirmPasswordVisible,
         toggleVisibility: toggleConfirmPasswordVisibility
     } = usePasswordVisibility();
+    
+    const backgroundColor = useThemeColor({}, 'background');
+    const textColor = useThemeColor({}, 'text');
+    const cardColor = useThemeColor({}, 'card');
 
     const [formState, dispatch] = useReducer(formReducer, initialFormState);
     const [registerState, setRegisterState] = useState<RegisterState>({ status: "idle" });
@@ -128,7 +133,10 @@ function RegisterScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
+        <SafeAreaContainer
+            edges={['bottom']}
+            backgroundColor={backgroundColor}
+            style={styles.container}>
             <KeyboardAvoidingView
                 style={styles.keyboardContainer}
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -146,14 +154,14 @@ function RegisterScreen() {
                             borderRadius={0}
                             showLoadingIndicator={false}
                         />
-                        <Text style={styles.title}>Create Account</Text>
-                        <Text style={styles.subtitle}>Sign up to get started</Text>
+                        <Text style={[styles.title, { color: textColor }]}>Create Account</Text>
+                        <Text style={[styles.subtitle, { color: textColor }]}>Sign up to get started</Text>
 
                         <View style={styles.nameContainer}>
                             <View style={[styles.inputContainer, styles.nameInput]}>
-                                <Text style={styles.label}>First Name</Text>
+                                <Text style={[styles.label, { color: textColor }]}>First Name</Text>
                                 <TextInput
-                                    style={styles.nameInputField}
+                                    style={[styles.nameInputField, { backgroundColor: cardColor, color: textColor }]}
                                     value={formState.firstName}
                                     onChangeText={(text) => handleChange("firstName", text)}
                                     autoCapitalize="words"
@@ -162,9 +170,9 @@ function RegisterScreen() {
                             </View>
 
                             <View style={[styles.inputContainer, styles.nameInput]}>
-                                <Text style={styles.label}>Last Name</Text>
+                                <Text style={[styles.label, { color: textColor }]}>Last Name</Text>
                                 <TextInput
-                                    style={styles.nameInputField}
+                                    style={[styles.nameInputField, { backgroundColor: cardColor, color: textColor }]}
                                     value={formState.lastName}
                                     onChangeText={(text) => handleChange("lastName", text)}
                                     autoCapitalize="words"
@@ -174,9 +182,9 @@ function RegisterScreen() {
                         </View>
 
                         <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Account</Text>
+                            <Text style={[styles.label, { color: textColor }]}>Account</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, { backgroundColor: cardColor, color: textColor }]}
                                 value={formState.account}
                                 onChangeText={(text) => handleChange("account", text)}
                                 autoCapitalize="none"
@@ -185,9 +193,9 @@ function RegisterScreen() {
                         </View>
 
                         <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Email</Text>
+                            <Text style={[styles.label, { color: textColor }]}>Email</Text>
                             <TextInput
-                                style={styles.input}
+                                style={[styles.input, { backgroundColor: cardColor, color: textColor }]}
                                 value={formState.email}
                                 onChangeText={(text) => handleChange("email", text)}
                                 autoCapitalize="none"
@@ -197,10 +205,10 @@ function RegisterScreen() {
                         </View>
 
                         <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Password</Text>
-                            <View style={styles.passwordInputContainer}>
+                            <Text style={[styles.label, { color: textColor }]}>Password</Text>
+                            <View style={[styles.passwordInputContainer, { backgroundColor: cardColor }]}>
                                 <TextInput
-                                    style={styles.passwordInput}
+                                    style={[styles.passwordInput, { color: textColor }]}
                                     value={formState.password}
                                     onChangeText={(text) => handleChange("password", text)}
                                     secureTextEntry={!passwordVisible}
@@ -221,10 +229,10 @@ function RegisterScreen() {
                         </View>
 
                         <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Confirm Password</Text>
-                            <View style={styles.passwordInputContainer}>
+                            <Text style={[styles.label, { color: textColor }]}>Confirm Password</Text>
+                            <View style={[styles.passwordInputContainer, { backgroundColor: cardColor }]}>
                                 <TextInput
-                                    style={styles.passwordInput}
+                                    style={[styles.passwordInput, { color: textColor }]}
                                     value={formState.confirmPassword}
                                     onChangeText={(text) => handleChange("confirmPassword", text)}
                                     secureTextEntry={!confirmPasswordVisible}
@@ -270,7 +278,7 @@ function RegisterScreen() {
                         />
 
                         <View style={styles.loginContainer}>
-                            <Text style={styles.loginText}>Already have an account? </Text>
+                            <Text style={[styles.loginText, { color: textColor }]}>Already have an account? </Text>
                             <Link href="/login-user" style={styles.loginLink}>
                                 <Text style={styles.loginLinkText}>Sign In</Text>
                             </Link>
@@ -278,7 +286,7 @@ function RegisterScreen() {
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </SafeAreaContainer>
     );
 }
 
@@ -287,7 +295,6 @@ export default RegisterScreen;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colorWhite,
     },
     keyboardContainer: {
         flex: 1,
@@ -305,13 +312,11 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 32,
         fontWeight: "bold",
-        color: theme.colorBlack,
         textAlign: "center",
         marginBottom: 8,
     },
     subtitle: {
         fontSize: 16,
-        color: theme.colorGrey,
         textAlign: "center",
         marginBottom: 40,
     },
@@ -330,7 +335,6 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 16,
         fontWeight: "600",
-        color: theme.colorBlack,
         marginBottom: 8,
     },
     input: {
@@ -340,7 +344,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 12,
         fontSize: 16,
-        backgroundColor: theme.colorWhite,
     },
     passwordInputContainer: {
         position: 'relative',
@@ -356,7 +359,6 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         paddingRight: 50, // Make room for the eye icon
         fontSize: 16,
-        backgroundColor: theme.colorWhite,
     },
     eyeIcon: {
         position: 'absolute',
@@ -370,7 +372,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 12,
         fontSize: 16,
-        backgroundColor: theme.colorWhite,
         marginRight: 8,
     },
     errorContainer: {
@@ -431,7 +432,6 @@ const styles = StyleSheet.create({
     },
     loginText: {
         fontSize: 14,
-        color: theme.colorGrey,
     },
     loginLink: {
         marginLeft: 4,

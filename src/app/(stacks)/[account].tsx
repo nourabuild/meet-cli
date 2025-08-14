@@ -1,13 +1,14 @@
 import { Text, View, StyleSheet, TouchableOpacity, Image, ScrollView, Alert } from "react-native";
 import { router, useLocalSearchParams, Stack } from "expo-router";
 import * as SecureStore from 'expo-secure-store';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useEffect, useState } from 'react';
 
 import { theme } from "@/styles/theme";
 import { FollowRepo, UserRepo } from "@/repo";
 import { Users } from "@/repo/users";
+import Navbar from "@/lib/utils/navigation-bar";
+import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 
 // -------------------------------
 // State Management
@@ -33,6 +34,11 @@ export default function ShowUserScreen() {
     const [userState, setUserState] = useState<UserProfileState>({ status: "idle" });
     const [isFollowing, setIsFollowing] = useState<boolean>(false);
     const [followLoading, setFollowLoading] = useState<boolean>(false);
+
+    const backgroundColor = useThemeColor({}, 'background');
+    const textColor = useThemeColor({}, 'text');
+    const cardColor = useThemeColor({}, 'card');
+    const borderColor = useThemeColor({}, 'border');
 
     useEffect(() => {
         const fetchUserProfile = async () => {
@@ -258,22 +264,24 @@ export default function ShowUserScreen() {
         return (
             <>
                 <Stack.Screen options={{ headerShown: false }} />
-                <SafeAreaView style={styles.container} edges={['top']}>
-                    <View style={styles.header}>
-                        <View style={styles.headerLeft}>
+                <View style={[styles.container, { backgroundColor }]}>
+                    <Navbar
+                        backgroundColor={backgroundColor}
+                    >
+                        <View style={styles.header}>
                             <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-                                <Feather name="arrow-left" size={24} color={theme.colorBlack} />
+                                <Feather name="arrow-left" size={24} color={textColor} />
                             </TouchableOpacity>
-                            <Text style={styles.title}>User Profile</Text>
+                            <Text style={[styles.title, { color: textColor }]}>User Profile</Text>
+                            <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
+                                <Feather name="more-horizontal" size={24} color={textColor} />
+                            </TouchableOpacity>
                         </View>
-                        <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
-                            <Feather name="more-horizontal" size={24} color={theme.colorBlack} />
-                        </TouchableOpacity>
-                    </View>
+                    </Navbar>
                     <View style={styles.centerContainer}>
                         <Text style={styles.loadingText}>Loading user profile...</Text>
                     </View>
-                </SafeAreaView>
+                </View>
             </>
         );
     }
@@ -282,21 +290,23 @@ export default function ShowUserScreen() {
         return (
             <>
                 <Stack.Screen options={{ headerShown: false }} />
-                <SafeAreaView style={styles.container} edges={['top']}>
-                    <View style={styles.header}>
-                        <View style={styles.headerLeft}>
+                <View style={[styles.container, { backgroundColor }]}>
+                    <Navbar
+                        backgroundColor={backgroundColor}
+                    >
+                        <View style={styles.header}>
                             <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-                                <Feather name="arrow-left" size={24} color={theme.colorBlack} />
+                                <Feather name="arrow-left" size={24} color={textColor} />
                             </TouchableOpacity>
-                            <Text style={styles.title}>User Profile</Text>
+                            <Text style={[styles.title, { color: textColor }]}>User Profile</Text>
+                            <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
+                                <Feather name="more-horizontal" size={24} color={textColor} />
+                            </TouchableOpacity>
                         </View>
-                        <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
-                            <Feather name="more-horizontal" size={24} color={theme.colorBlack} />
-                        </TouchableOpacity>
-                    </View>
+                    </Navbar>
                     <View style={styles.centerContainer}>
                         <Feather name="alert-circle" size={48} color={theme.colorGrey} />
-                        <Text style={styles.errorTitle}>Error</Text>
+                        <Text style={[styles.errorTitle, { color: textColor }]}>Error</Text>
                         <Text style={styles.errorText}>{userState.error}</Text>
                         <TouchableOpacity
                             style={styles.retryButton}
@@ -306,7 +316,7 @@ export default function ShowUserScreen() {
                             <Text style={styles.retryButtonText}>Try Again</Text>
                         </TouchableOpacity>
                     </View>
-                </SafeAreaView>
+                </View>
             </>
         );
     }
@@ -318,162 +328,149 @@ export default function ShowUserScreen() {
     const { user, followersCount, followingCount } = userState.data;
 
     return (
-        <>
-            <Stack.Screen options={{ headerShown: false }} />
-            <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={[styles.container, { backgroundColor }]}>
+            <Navbar
+                backgroundColor={backgroundColor}
+            >
                 <View style={styles.header}>
-                    <View style={styles.headerLeft}>
-                        <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-                            <Feather name="arrow-left" size={24} color={theme.colorBlack} />
-                        </TouchableOpacity>
-                        <Text style={styles.title}>{user.account}</Text>
-                    </View>
+                    <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
+                        <Feather name="arrow-left" size={20} color={textColor} />
+                    </TouchableOpacity>
+                    <Text style={[styles.title, { color: textColor }]}>{user.account}</Text>
                     <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
-                        <Feather name="more-horizontal" size={24} color={theme.colorBlack} />
+                        <Feather name="more-horizontal" size={20} color={textColor} />
                     </TouchableOpacity>
                 </View>
+            </Navbar>
 
-                <ScrollView
-                    style={styles.scrollView}
-                    contentContainerStyle={styles.scrollContent}
-                    showsVerticalScrollIndicator={false}
-                >
-                    <View style={styles.profileContent}>
-                        {/* Avatar Section */}
-                        <View style={styles.avatarAndNameSection}>
-                            <View style={styles.avatarContainer}>
-                                {user.avatar_photo_id ? (
-                                    <Image
-                                        source={{ uri: `https://api.example.com/photos/${user.avatar_photo_id}` }}
-                                        style={styles.avatar}
-                                    />
-                                ) : (
-                                    <View style={styles.avatarFallback}>
-                                        <Text style={styles.avatarInitials}>
-                                            {getInitials(user.name)}
-                                        </Text>
-                                    </View>
-                                )}
-                            </View>
-                            <View style={styles.nameAndStatsSection}>
-                                <View style={styles.nameAndButtonRow}>
-                                    <Text style={styles.displayName}>{user.name}</Text>
-                                </View>
-                                {/* Stats Row */}
-                                <View style={styles.statsRow}>
-                                    <TouchableOpacity
-                                        style={styles.statItem}
-                                        onPress={() => {/* TODO: Navigate to followers */ }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text style={styles.statNumber}>
-                                            {formatFollowerCount(followersCount)}
-                                        </Text>
-                                        <Text style={styles.statLabel}>followers</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.statItem}
-                                        onPress={() => {/* TODO: Navigate to following */ }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text style={styles.statNumber}>
-                                            {formatFollowerCount(followingCount)}
-                                        </Text>
-                                        <Text style={styles.statLabel}>following</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        </View>
-
-                        {/* Bio - only show if exists */}
-                        {user.bio && (
-                            <Text style={styles.bio}>{user.bio}</Text>
-                        )}
-
-                        {/* Follow/Unfollow Button */}
-                        <TouchableOpacity
-                            style={styles.followButton}
-                            onPress={handleFollowPress}
-                            disabled={followLoading}
-                        >
-                            <Text style={styles.followButtonText}>
-                                {followLoading ? "Loading..." : isFollowing ? "Unfollow" : "Follow"}
-                            </Text>
-                        </TouchableOpacity>
-
-                        {/* User Info Details */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Details</Text>
-
-                            <View style={styles.detailItem}>
-                                <Feather name="mail" size={20} color={theme.colorNouraBlue} />
-                                <View style={styles.detailText}>
-                                    <Text style={styles.detailLabel}>Email</Text>
-                                    <Text style={styles.detailValue}>{user.email}</Text>
-                                </View>
-                            </View>
-
-                            {user.phone && (
-                                <View style={styles.detailItem}>
-                                    <Feather name="phone" size={20} color={theme.colorNouraBlue} />
-                                    <View style={styles.detailText}>
-                                        <Text style={styles.detailLabel}>Phone</Text>
-                                        <Text style={styles.detailValue}>{user.phone}</Text>
-                                    </View>
-                                </View>
-                            )}
-
-                            <View style={styles.detailItem}>
-                                <Feather name="calendar" size={20} color={theme.colorNouraBlue} />
-                                <View style={styles.detailText}>
-                                    <Text style={styles.detailLabel}>Joined</Text>
-                                    <Text style={styles.detailValue}>
-                                        {formatJoinDate(user.created_at)}
+            <ScrollView
+                style={styles.scrollView}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+            >
+                <View style={styles.profileContent}>
+                    {/* Avatar Section */}
+                    <View style={styles.avatarAndNameSection}>
+                        <View style={styles.avatarContainer}>
+                            {user.avatar_photo_id ? (
+                                <Image
+                                    source={{ uri: `https://api.example.com/photos/${user.avatar_photo_id}` }}
+                                    style={styles.avatar}
+                                />
+                            ) : (
+                                <View style={styles.avatarFallback}>
+                                    <Text style={styles.avatarInitials}>
+                                        {getInitials(user.name)}
                                     </Text>
                                 </View>
+                            )}
+                        </View>
+                        <View style={styles.nameAndStatsSection}>
+                            <View style={styles.nameAndButtonRow}>
+                                <Text style={[styles.displayName, { color: textColor }]}>{user.name}</Text>
+                            </View>
+                            {/* Stats Row */}
+                            <View style={styles.statsRow}>
+                                <TouchableOpacity
+                                    style={styles.statItem}
+                                    onPress={() => {/* TODO: Navigate to followers */ }}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={[styles.statNumber, { color: textColor }]}>
+                                        {formatFollowerCount(followersCount)}
+                                    </Text>
+                                    <Text style={styles.statLabel}>followers</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.statItem}
+                                    onPress={() => {/* TODO: Navigate to following */ }}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={[styles.statNumber, { color: textColor }]}>
+                                        {formatFollowerCount(followingCount)}
+                                    </Text>
+                                    <Text style={styles.statLabel}>following</Text>
+                                </TouchableOpacity>
                             </View>
                         </View>
                     </View>
-                </ScrollView>
-            </SafeAreaView>
-        </>
+
+                    {/* Bio - only show if exists */}
+                    {user.bio && (
+                        <Text style={[styles.bio, { color: textColor }]}>{user.bio}</Text>
+                    )}
+
+                    {/* Follow/Unfollow Button */}
+                    <TouchableOpacity
+                        style={[styles.followButton, { backgroundColor: cardColor }]}
+                        onPress={handleFollowPress}
+                        disabled={followLoading}
+                    >
+                        <Text style={[styles.followButtonText, { color: textColor }]}>
+                            {followLoading ? "Loading..." : isFollowing ? "Unfollow" : "Follow"}
+                        </Text>
+                    </TouchableOpacity>
+
+                    {/* User Info Details */}
+                    <View style={[styles.section, { borderBottomColor: borderColor }]}>
+                        <Text style={[styles.sectionTitle, { color: textColor }]}>Details</Text>
+
+                        <View style={styles.detailItem}>
+                            <Feather name="mail" size={20} color={theme.colorNouraBlue} />
+                            <View style={styles.detailText}>
+                                <Text style={styles.detailLabel}>Email</Text>
+                                <Text style={[styles.detailValue, { color: textColor }]}>{user.email}</Text>
+                            </View>
+                        </View>
+
+                        {user.phone && (
+                            <View style={styles.detailItem}>
+                                <Feather name="phone" size={20} color={theme.colorNouraBlue} />
+                                <View style={styles.detailText}>
+                                    <Text style={styles.detailLabel}>Phone</Text>
+                                    <Text style={[styles.detailValue, { color: textColor }]}>{user.phone}</Text>
+                                </View>
+                            </View>
+                        )}
+
+                        <View style={styles.detailItem}>
+                            <Feather name="calendar" size={20} color={theme.colorNouraBlue} />
+                            <View style={styles.detailText}>
+                                <Text style={styles.detailLabel}>Joined</Text>
+                                <Text style={[styles.detailValue, { color: textColor }]}>
+                                    {formatJoinDate(user.created_at)}
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </ScrollView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colorWhite,
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-    },
-    headerLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
     },
     backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 20,
+        height: 20,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 8,
     },
     title: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: '600',
-        color: theme.colorBlack,
     },
     menuButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 20,
+        height: 20,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -481,7 +478,6 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 40,
     },
     loadingText: {
         fontSize: 16,
@@ -491,7 +487,6 @@ const styles = StyleSheet.create({
     errorTitle: {
         fontSize: 20,
         fontWeight: '600',
-        color: theme.colorBlack,
         textAlign: 'center',
         marginTop: 16,
         marginBottom: 8,
@@ -521,7 +516,7 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
     },
     profileContent: {
-        paddingHorizontal: 24,
+        paddingHorizontal: 20,
         paddingTop: 16,
     },
     avatarAndNameSection: {
@@ -562,7 +557,6 @@ const styles = StyleSheet.create({
     displayName: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: theme.colorBlack,
     },
     statsRow: {
         flexDirection: 'row',
@@ -575,7 +569,6 @@ const styles = StyleSheet.create({
     statNumber: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: theme.colorBlack,
         marginBottom: 2,
     },
     statLabel: {
@@ -585,14 +578,12 @@ const styles = StyleSheet.create({
     },
     bio: {
         fontSize: 16,
-        color: theme.colorBlack,
         textAlign: 'left',
         lineHeight: 22,
         marginBottom: 24,
         fontStyle: 'italic',
     },
     followButton: {
-        backgroundColor: theme.colorLightGrey,
         borderRadius: 6,
         paddingVertical: 8,
         paddingHorizontal: 16,
@@ -602,18 +593,15 @@ const styles = StyleSheet.create({
     followButtonText: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colorBlack,
         textAlign: 'center',
     },
     section: {
         paddingVertical: 20,
         borderBottomWidth: 1,
-        borderBottomColor: theme.colorLightGrey,
     },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '600',
-        color: theme.colorBlack,
         marginBottom: 16,
     },
     detailItem: {
@@ -633,6 +621,5 @@ const styles = StyleSheet.create({
     detailValue: {
         fontSize: 16,
         fontWeight: '500',
-        color: theme.colorBlack,
     },
 });

@@ -57,7 +57,7 @@ export namespace Meetings {
     };
 
 
-    type FieldError = {
+    export type FieldError = {
         field: string;
         error: string;
     };
@@ -74,33 +74,156 @@ export namespace Meetings {
 
     export type Response = SuccessResponse | FailureResponse;
 
+    // Form validation types
+    export type ValidationErrors = {
+        title?: string;
+        type?: string;
+        location?: string;
+        date?: string;
+        participants?: string;
+    };
+
+    // Validation functions
+    export const validateTitle = (title: string): string | undefined => {
+        if (!title.trim()) {
+            return 'Meeting title is required';
+        }
+        if (title.trim().length < 3) {
+            return 'Meeting title must be at least 3 characters long';
+        }
+        return undefined;
+    };
+
+    export const validateType = (type: string): string | undefined => {
+        if (!type.trim()) {
+            return 'Meeting type is required';
+        }
+        if (type.trim().length < 2) {
+            return 'Meeting type must be at least 2 characters long';
+        }
+        return undefined;
+    };
+
+    export const validateLocation = (location: string): string | undefined => {
+        if (!location.trim()) {
+            return 'Location is required';
+        }
+        if (location.trim().length < 2) {
+            return 'Location must be at least 2 characters long';
+        }
+        return undefined;
+    };
+
+    export const validateDate = (date: Date): string | undefined => {
+        const now = new Date();
+        if (date <= now) {
+            return 'Meeting date must be in the future';
+        }
+        return undefined;
+    };
+
+    export const validateParticipants = (participants: any[], currentUserId?: string): string | undefined => {
+        // Count participants excluding the current user (owner)
+        const otherParticipants = participants.filter(p => p.id !== currentUserId);
+        if (otherParticipants.length === 0) {
+            return 'At least one participant besides yourself is required';
+        }
+        return undefined;
+    };
+
+    export const validateMeetingForm = (data: {
+        title: string;
+        type: string;
+        location: string;
+        date?: Date;
+        participants?: any[];
+        currentUserId?: string;
+    }): ValidationErrors => {
+        const errors: ValidationErrors = {};
+        
+        const titleError = validateTitle(data.title);
+        if (titleError) errors.title = titleError;
+        
+        const typeError = validateType(data.type);
+        if (typeError) errors.type = typeError;
+        
+        const locationError = validateLocation(data.location);
+        if (locationError) errors.location = locationError;
+        
+        if (data.date) {
+            const dateError = validateDate(data.date);
+            if (dateError) errors.date = dateError;
+        }
+        
+        if (data.participants && data.currentUserId) {
+            const participantsError = validateParticipants(data.participants, data.currentUserId);
+            if (participantsError) errors.participants = participantsError;
+        }
+        
+        return errors;
+    };
+
+    export const hasValidationErrors = (errors: ValidationErrors): boolean => {
+        return Object.values(errors).some(error => error !== undefined);
+    };
+
 }
 
 const NewMeetingRepository = (host: string): MeetingRepository => {
     return {
         GetMeetings: async (status: string, token: string): Promise<Meetings.Response> => {
-            const req = await fetch(`${host}/api/v1/meeting/index`, {
-                method: "GET",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Accept": "application/json",
-                },
-            });
+            try {
+                const req = await fetch(`${host}/api/v1/meeting/index`, {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Accept": "application/json",
+                    },
+                });
 
-            const response = await req.json();
+                let response;
+                try {
+                    response = await req.json();
+                } catch (jsonError) {
+                    // Handle cases where response is not valid JSON
+                    return {
+                        success: false,
+                        errors: [{ field: "general", error: "Invalid server response" }],
+                    } satisfies Meetings.Response;
+                }
 
-            if (!req.ok) {
+                if (!req.ok) {
+                    // Handle specific HTTP status codes
+                    let errorMessage = "Failed to fetch meetings";
+                    
+                    if (req.status === 401) {
+                        errorMessage = "COULD_NOT_VALIDATE_CREDENTIALS";
+                    } else if (req.status === 403) {
+                        errorMessage = "Access forbidden";
+                    } else if (req.status === 404) {
+                        errorMessage = "Meetings endpoint not found";
+                    } else if (req.status >= 500) {
+                        errorMessage = "Server error. Please try again later.";
+                    }
+                    
+                    return {
+                        success: false,
+                        errors: response.errors || [{ field: "general", error: errorMessage }],
+                    } satisfies Meetings.Response;
+                }
+
+                // Your backend returns array directly, not wrapped in {data: ...}
+                return {
+                    success: true,
+                    data: response, // response is already the array of meetings
+                } satisfies Meetings.Response;
+            } catch (networkError) {
+                // Handle network errors (no internet, server down, etc.)
                 return {
                     success: false,
-                    errors: response.errors || [{ field: "general", error: "Failed to fetch meetings" }],
+                    errors: [{ field: "general", error: "Network error. Please check your connection." }],
                 } satisfies Meetings.Response;
             }
-
-            // Your backend returns array directly, not wrapped in {data: ...}
-            return {
-                success: true,
-                data: response, // response is already the array of meetings
-            } satisfies Meetings.Response;
         },
         GetMeetingsRequests: async (status: string, token: string): Promise<Meetings.Response> => {
             const req = await fetch(`${host}/api/v1/meeting/requests`, {
@@ -175,6 +298,33 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
         },
 
         CreateMeetingWithParticipants: async (formData: FormData, token: string): Promise<Meetings.Response> => {
+            // Extract data from FormData (React Native specific) for validation
+            const formDataParts = (formData as any)._parts;
+            let title = '';
+            let type = '';
+            let location = '';
+            
+            if (formDataParts) {
+                for (const [key, value] of formDataParts) {
+                    if (key === 'title') title = value;
+                    if (key === 'type') type = value;
+                    if (key === 'location') location = value;
+                }
+            }
+            
+            // Client-side validation before API call
+            const validationErrors = Meetings.validateMeetingForm({ title, type, location });
+            if (Meetings.hasValidationErrors(validationErrors)) {
+                const fieldErrors: Meetings.FieldError[] = Object.entries(validationErrors)
+                    .filter(([_, error]) => error)
+                    .map(([field, error]) => ({ field, error: error! }));
+                    
+                return {
+                    success: false,
+                    errors: fieldErrors,
+                } satisfies Meetings.Response;
+            }
+            
             // Convert FormData to the expected JSON structure
             const requestData: {
                 meeting: Partial<Meetings.MeetingCreateInfo>;
@@ -183,9 +333,6 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                 meeting: {},
                 participants: []
             };
-
-            // Extract data from FormData (React Native specific)
-            const formDataParts = (formData as any)._parts;
 
             if (formDataParts) {
                 for (const [key, value] of formDataParts) {
@@ -214,8 +361,17 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
 
             // Set default status if not provided
             if (!requestData.meeting.status) {
-                requestData.meeting.status = "pending";
+                requestData.meeting.status = "new";
             }
+
+            console.log("=== API Request Debug ===");
+            console.log("URL:", `${host}/api/v1/meeting/create`);
+            console.log("Request data:", JSON.stringify(requestData, null, 2));
+            console.log("Headers:", {
+                Authorization: `Bearer ${token}`,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            });
 
             const req = await fetch(`${host}/api/v1/meeting/create`, {
                 method: "POST",
@@ -227,7 +383,23 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                 body: JSON.stringify(requestData),
             });
 
-            const response = await req.json();
+            console.log("=== API Response Debug ===");
+            console.log("Status:", req.status);
+            console.log("Status Text:", req.statusText);
+            console.log("OK:", req.ok);
+
+            let response;
+            try {
+                response = await req.json();
+                console.log("Response:", response);
+            } catch (jsonError) {
+                console.error("Failed to parse JSON response:", jsonError);
+                console.log("Raw response text:", await req.text());
+                return {
+                    success: false,
+                    errors: [{ field: "general", error: "Invalid server response" }],
+                } satisfies Meetings.Response;
+            }
 
             if (!req.ok) {
                 return {
