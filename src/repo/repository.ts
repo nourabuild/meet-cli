@@ -2,6 +2,7 @@ import { Auths } from "./auths";
 import { Follows } from "./follows";
 import { Users } from "./users";
 import { Meetings } from "./meetings";
+import { Calendars } from "./calendars";
 
 
 export interface AuthRepository {
@@ -11,17 +12,20 @@ export interface AuthRepository {
 
 export interface UserRepository {
     GetByAccount: (account: string, token: string) => Promise<Users.Response>;
-    GetOnboardingStatus: (token: string) => Promise<Users.OnboardingResponse>;
     WhoAmI: (token: string) => Promise<Users.Response>;
     SearchUsers: (query: string, token: string, signal: AbortSignal) => Promise<Users.SearchResponse>;
     UpdateUser: (formData: FormData, token: string) => Promise<Users.Response>;
-    DeleteUserWeeklyAvailabilityById: (calendarId: string, token: string) => Promise<Users.Response>;
-    GetUserWeeklyAvailability: (token: string) => Promise<Users.Response>;
-    GetUserExceptionDates: (token: string) => Promise<Users.Response>;
-    AddUserExceptionDate: (formData: FormData, token: string) => Promise<Users.Response>;
-    AddUserAvailability: (formData: FormData, token: string) => Promise<Users.Response>;
-    AddUserWeeklyAvailability: (dayOfWeek: number, intervals: any[], token: string) => Promise<Users.Response>;
 };
+
+export interface CalendarRepository {
+    GetUserWeeklyAvailability: (token: string) => Promise<Calendars.Response>;
+    GetUserExceptionDates: (token: string) => Promise<Calendars.Response>;
+    GetOnboardingStatus: (token: string) => Promise<Calendars.OnboardingResponse>;
+    AddUserWeeklyAvailability: (dayOfWeek: number, intervals: any[], token: string) => Promise<Calendars.Response>;
+    AddUserExceptionDate: (formData: FormData, token: string) => Promise<Calendars.Response>;
+    AddUserAvailability: (formData: FormData, token: string) => Promise<Calendars.Response>;
+    DeleteUserWeeklyAvailabilityById: (calendarId: string, token: string) => Promise<Calendars.Response>;
+}
 
 export interface FollowRepository {
     FollowUser: (id: string, token: string) => Promise<Follows.Response>;

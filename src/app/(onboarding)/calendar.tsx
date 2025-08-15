@@ -10,7 +10,7 @@ import {
     Alert,
 } from 'react-native';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
-import { UserRepo } from '@/repo';
+import { CalendarRepo } from '@/repo';
 import * as SecureStore from 'expo-secure-store';
 import { useAuth } from '@/lib/utils/auth-context';
 
@@ -266,7 +266,7 @@ export default function OnboardingCalendarScreen() {
             const daysWithAvailability = weeklySchedule.filter(day => day.intervals.length > 0);
 
             for (const daySchedule of daysWithAvailability) {
-                const result = await UserRepo.AddUserWeeklyAvailability(
+                const result = await CalendarRepo.AddUserWeeklyAvailability(
                     daySchedule.day_of_week,
                     daySchedule.intervals,
                     token

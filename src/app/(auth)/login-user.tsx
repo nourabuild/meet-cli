@@ -53,7 +53,7 @@ function formReducer(state: FormFields, action: { name: keyof FormFields; value:
 function LoginScreen() {
     const { visible, toggleVisibility } = usePasswordVisibility();
     const { login } = useAuth();
-    
+
     const backgroundColor = useThemeColor({}, 'background');
     const textColor = useThemeColor({}, 'text');
     const cardColor = useThemeColor({}, 'card');
@@ -99,7 +99,7 @@ function LoginScreen() {
             >
                 <View style={styles.formContainer}>
                     <NouraImage
-                        source={require("../../assets/icon.png")}
+                        source={require("../../../assets/icon.png")}
                         style={styles.logo}
                         containerStyle={styles.logoContainer}
                         resizeMode="contain"

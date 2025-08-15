@@ -42,3 +42,5 @@ android
 ios
 
 src/lib/hooks/usePushNotification.ts
+
+CLAUDE.md

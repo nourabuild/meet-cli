@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Feather, MaterialIcons, AntDesign } from '@expo/vector-icons';
-import { UserRepo } from '@/repo';
+import { CalendarRepo } from '@/repo';
 import * as SecureStore from 'expo-secure-store';
 import { NouraTimePicker } from '@/lib/components';
 import { useThemeColor } from '@/lib/hooks/theme/useThemeColor';
@@ -158,15 +158,15 @@ export default function AvailabilityScreen() {
                 const token = await SecureStore.getItemAsync('access_token');
                 if (!token) return;
 
-                const result = await UserRepo.GetUserWeeklyAvailability(token);
+                const result = await CalendarRepo.GetUserWeeklyAvailability(token);
                 console.log('API Result:', result);
 
-                if (result.success && Array.isArray(result.data)) {
-                    console.log('Loaded data:', result.data);
+                if (result.success && result.data && Array.isArray(result.data.entries)) {
+                    console.log('Loaded data:', result.data.entries);
                     // Group the API response by day_of_week
                     const scheduleMap = new Map();
 
-                    result.data.forEach((timeSlot: any) => {
+                    result.data.entries.forEach((timeSlot: any) => {
                         const dayId = timeSlot.day_of_week;
                         if (!scheduleMap.has(dayId)) {
                             scheduleMap.set(dayId, {
@@ -190,6 +190,12 @@ export default function AvailabilityScreen() {
 
                     dispatchWeeklySchedule({ type: 'SET_SCHEDULE', payload: loadedSchedule });
                 } else {
+                    console.log('Failed to load weekly availability:');
+                    if (!result.success) {
+                        console.log('Error details:', result.errors);
+                    } else {
+                        console.log('Data is not an array:', result.data);
+                    }
                     // Fallback to empty schedule (no default Mon-Fri hours)
                     const emptySchedule = DAYS_OF_WEEK.map(day => ({
                         day_of_week: day.id,
@@ -199,11 +205,17 @@ export default function AvailabilityScreen() {
                 }
 
                 // Load exception dates
-                const getExceptionsResponse = await UserRepo.GetUserExceptionDates(token);
-                if (getExceptionsResponse.success && Array.isArray(getExceptionsResponse.data)) {
+                const getExceptionsResponse = await CalendarRepo.GetUserExceptionDates(token);
+                console.log('Exception dates response:', getExceptionsResponse);
+                if (getExceptionsResponse.success && getExceptionsResponse.data && Array.isArray(getExceptionsResponse.data.exceptions)) {
+                    setExceptions(dedupeExceptions(getExceptionsResponse.data.exceptions));
+                } else if (getExceptionsResponse.success && Array.isArray(getExceptionsResponse.data)) {
                     setExceptions(dedupeExceptions(getExceptionsResponse.data));
                 } else {
                     console.log('No exception dates found or failed to load');
+                    if (!getExceptionsResponse.success) {
+                        console.log('Exception dates error:', getExceptionsResponse.errors);
+                    }
                     setExceptions([]);
                 }
             } catch (error) {
@@ -235,10 +247,10 @@ export default function AvailabilityScreen() {
 
             // First, delete all existing availability entries to prevent duplicates
             console.log('=== DELETING EXISTING AVAILABILITY ===');
-            const existingResult = await UserRepo.GetUserWeeklyAvailability(token);
-            if (existingResult.success && Array.isArray(existingResult.data)) {
-                for (const existingEntry of existingResult.data) {
-                    const deleteResult = await UserRepo.DeleteUserWeeklyAvailabilityById(existingEntry.id, token);
+            const existingResult = await CalendarRepo.GetUserWeeklyAvailability(token);
+            if (existingResult.success && existingResult.data && Array.isArray(existingResult.data.entries)) {
+                for (const existingEntry of existingResult.data.entries) {
+                    const deleteResult = await CalendarRepo.DeleteUserWeeklyAvailabilityById(existingEntry.id, token);
                     if (!deleteResult.success) {
                         console.error(`Failed to delete availability entry ${existingEntry.id}:`, deleteResult.errors);
                         throw new Error(`Failed to delete existing availability entry`);
@@ -260,7 +272,7 @@ export default function AvailabilityScreen() {
                 const dayName = DAYS_OF_WEEK.find(d => d.id === daySchedule.day_of_week)?.name || 'Unknown';
                 console.log(`Saving ${dayName} (day ${daySchedule.day_of_week}) with intervals:`, daySchedule.intervals);
 
-                const result = await UserRepo.AddUserWeeklyAvailability(
+                const result = await CalendarRepo.AddUserWeeklyAvailability(
                     daySchedule.day_of_week,
                     daySchedule.intervals,
                     token
@@ -283,7 +295,7 @@ export default function AvailabilityScreen() {
                 formData.append('end_time', exception.end_time);
                 formData.append('is_available', exception.is_available.toString());
 
-                const result = await UserRepo.AddUserExceptionDate(formData, token);
+                const result = await CalendarRepo.AddUserExceptionDate(formData, token);
                 if (!result.success) {
                     throw new Error(`Failed to save exception date ${exception.exception_date}`);
                 }
@@ -565,7 +577,7 @@ export default function AvailabilityScreen() {
                 formData.append('end_time', exception.end_time);
                 formData.append('is_available', exception.is_available.toString());
 
-                const result = await UserRepo.AddUserExceptionDate(formData, token);
+                const result = await CalendarRepo.AddUserExceptionDate(formData, token);
                 if (!result.success) {
                     throw new Error(`Failed to save exception date ${exception.exception_date}`);
                 }

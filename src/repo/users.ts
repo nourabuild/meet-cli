@@ -20,9 +20,6 @@ export namespace Users {
         updated_at: string;
     };
 
-    export type OnboardingStatus = {
-        completed: boolean;
-    };
 
     type FieldError = {
         field: string;
@@ -40,13 +37,6 @@ export namespace Users {
     };
 
     export type Response = SuccessResponse | FailureResponse;
-
-    type OnboardingSuccessResponse = {
-        success: true;
-        data: OnboardingStatus;
-    };
-
-    export type OnboardingResponse = OnboardingSuccessResponse | FailureResponse;
 
     // Separate type for search results that includes count and data array
     export type SearchResponse = {
@@ -117,57 +107,6 @@ const NewUserRepository = (host: string): UserRepository => {
                 data: response,
             } satisfies Users.Response;
         },
-        GetOnboardingStatus: async (token: string) => {
-            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/onboarding/check`, {
-                method: "GET",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Accept": "application/json",
-                },
-            });
-            let response;
-            try {
-                response = await req.json();
-            } catch (jsonError) {
-                console.error("GetOnboardingStatus: Failed to parse JSON response:", jsonError);
-
-                if (req.status >= 500) {
-                    return {
-                        success: false,
-                        errors: [{ field: "onboarding", error: "Server error. Please try again later." }],
-                    } satisfies Users.OnboardingResponse;
-                }
-
-                return {
-                    success: false,
-                    errors: [{ field: "onboarding", error: "Invalid response from server." }],
-                } satisfies Users.OnboardingResponse;
-            }
-
-            if (!req.ok) {
-                if (req.status >= 500) {
-                    return {
-                        success: false,
-                        errors: [{ field: "onboarding", error: "Server error. Please try again later." }],
-                    } satisfies Users.OnboardingResponse;
-                }
-
-                const errorMessage = typeof response?.errors === "object"
-                    ? Object.values(response.errors).join(", ")
-                    : response?.detail ?? "Failed to fetch user";
-
-                return {
-                    success: false,
-                    errors: [{ field: "onboarding", error: errorMessage }],
-                } satisfies Users.OnboardingResponse;
-            }
-
-            return {
-                success: true,
-                data: response,
-            } satisfies Users.OnboardingResponse;
-        },
-
         WhoAmI: async (token: string) => {
             const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/me/verify`, {
                 method: "GET",
@@ -425,197 +364,6 @@ const NewUserRepository = (host: string): UserRepository => {
                 return {
                     success: false,
                     errors: [{ field: "updateuser", error: errorMessage }],
-                } satisfies Users.Response;
-            }
-
-            return {
-                success: true,
-                data: response,
-            } satisfies Users.Response;
-        },
-        GetUserWeeklyAvailability: async (token: string) => {
-            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/calendar/entries/list`, {
-                method: "GET",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Accept": "application/json",
-                },
-            });
-            const response = await req.json();
-            if (!req.ok) {
-                return {
-                    success: false,
-                    errors: [{ field: "availability", error: response.message || "Failed to load availability" }],
-                } satisfies Users.Response;
-            }
-
-            return {
-                success: true,
-                data: response,
-            } satisfies Users.Response;
-        },
-        GetUserExceptionDates: async (token: string) => {
-            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/calendar/exceptions`, {
-                method: "GET",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Accept": "application/json",
-                },
-            });
-            const response = await req.json();
-            if (!req.ok) {
-                return {
-                    success: false,
-                    errors: [{ field: "availability", error: response.message || "Failed to load exception dates" }],
-                } satisfies Users.Response;
-            }
-
-            return {
-                success: true,
-                data: response,
-            } satisfies Users.Response;
-        },
-
-        AddUserWeeklyAvailability: async (dayOfWeek: number, intervals: any[], token: string) => {
-            const data = {
-                day_of_week: dayOfWeek,
-                intervals: intervals
-            };
-
-            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/calendar/intervals`, {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(data),
-            });
-            const response = await req.json();
-            if (!req.ok) {
-                return {
-                    success: false,
-                    errors: [{ field: "availability", error: response.message || "Failed to save availability" }],
-                } satisfies Users.Response;
-            }
-
-            return {
-                success: true,
-                data: response,
-            } satisfies Users.Response;
-        },
-
-        AddUserExceptionDate: async (formData: FormData, token: string) => {
-
-            const errors: { field: string; error: string; }[] = [];
-            const data: Record<string, any> = {};
-
-            const exceptionDateValue = formData.get("exception_date") as string;
-            const startTimeValue = formData.get("start_time") as string;
-            const endTimeValue = formData.get("end_time") as string;
-            const isAvailableValue = formData.get("is_available") as string;
-
-            if (!exceptionDateValue) {
-                errors.push({ field: "exception_date", error: "Exception date is required" });
-            } else {
-                data.exception_date = exceptionDateValue;
-            }
-
-            if (!startTimeValue || !endTimeValue) {
-                errors.push({ field: "availability", error: "Start and end times are required" });
-            } else {
-                data.start_time = startTimeValue;
-                data.end_time = endTimeValue;
-            }
-
-            data.is_available = isAvailableValue === 'true';
-
-            if (errors.length > 0) {
-                return {
-                    success: false,
-                    errors: errors,
-                } satisfies Users.Response;
-            }
-
-            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/exception/date`, {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(data),
-            });
-            const response = await req.json();
-            if (!req.ok) {
-                return {
-                    success: false,
-                    errors: [{ field: "exception_date", error: response.message || "Failed to save exception date" }],
-                } satisfies Users.Response;
-            }
-
-            return {
-                success: true,
-                data: response,
-            } satisfies Users.Response;
-        },
-        AddUserAvailability: async (formData: FormData, token: string) => {
-            // Extract data from FormData with validation
-            const errors: { field: string; error: string; }[] = [];
-            const data: Record<string, any> = {};
-
-            // Calendar ID validation
-            const calendarIdValue = formData.get("calendar_id") as string;
-            if (!calendarIdValue || calendarIdValue.trim() === "") {
-                errors.push({ field: "calendar_id", error: "Calendar ID is required" });
-            } else {
-                data.calendar_id = calendarIdValue.trim();
-            }
-
-            // Return validation errors if any
-            if (errors.length > 0) {
-                return {
-                    success: false,
-                    errors: errors,
-                } satisfies Users.Response;
-            }
-
-            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/calendar/intervals`, {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(data),
-            });
-            const response = await req.json();
-            if (!req.ok) {
-                if (req.status >= 500) {
-                    return {
-                        success: false,
-                        errors: [{ field: "addusercalendar", error: "Server error. Please try again later." }],
-                    } satisfies Users.Response;
-                }
-            }
-
-            return {
-                success: true,
-                data: response,
-            } satisfies Users.Response;
-        },
-        DeleteUserWeeklyAvailabilityById: async (calendarId: string, token: string) => {
-            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/calendar/${calendarId}/delete`, {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Accept": "application/json",
-                },
-            });
-            const response = await req.json();
-            if (!req.ok) {
-                return {
-                    success: false,
-                    errors: [{ field: "availability", error: response.message || "Failed to delete availability" }],
                 } satisfies Users.Response;
             }
 

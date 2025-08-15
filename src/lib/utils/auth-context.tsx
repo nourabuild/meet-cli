@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode, useCa
 import * as SecureStore from 'expo-secure-store';
 import { useReduxSelector, useReduxDispatch } from '@/lib/hooks';
 import { setSession, logout as logoutAction } from '@/stores/user-slice';
-import { UserRepo } from '@/repo';
+import { CalendarRepo, UserRepo } from '@/repo';
 
 type AuthState =
     | { status: "idle" }
@@ -31,7 +31,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const [authState, setAuthState] = useState<AuthState>({ status: "idle" });
     const user = useReduxSelector((state) => state.user);
     const dispatch = useReduxDispatch();
-    
+
     // Computed values for backward compatibility
     const isAuthenticated = authState.status === "authenticated";
     const hasCompletedOnboarding = authState.status === "authenticated" ? authState.hasCompletedOnboarding : null;
@@ -42,23 +42,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
             const token = await SecureStore.getItemAsync('access_token');
             // Check both token existence AND Redux user state
             const hasAuth = !!(token && user);
-            
+
             if (hasAuth) {
                 // Check onboarding status when authenticated
-                const onboardingResult = await UserRepo.GetOnboardingStatus(token);
+                const onboardingResult = await CalendarRepo.GetOnboardingStatus(token);
                 const hasCompletedOnboarding = onboardingResult.success ? (onboardingResult.data.completed || false) : false;
-                
-                setAuthState({ 
-                    status: "authenticated", 
-                    hasCompletedOnboarding 
+
+                setAuthState({
+                    status: "authenticated",
+                    hasCompletedOnboarding
                 });
             } else {
                 setAuthState({ status: "unauthenticated" });
             }
         } catch (error) {
             console.error('Error checking auth:', error);
-            setAuthState({ 
-                status: "error", 
+            setAuthState({
+                status: "error",
                 error: error instanceof Error ? error.message : "Authentication check failed"
             });
         }
@@ -66,7 +66,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const checkOnboardingStatus = useCallback(async () => {
         if (authState.status !== "authenticated") return;
-        
+
         try {
             const token = await SecureStore.getItemAsync('access_token');
             if (!token) {
@@ -74,22 +74,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 return;
             }
 
-            const result = await UserRepo.GetOnboardingStatus(token);
+            const result = await CalendarRepo.GetOnboardingStatus(token);
             if (result.success) {
                 setAuthState({
                     status: "authenticated",
                     hasCompletedOnboarding: result.data.completed || false
                 });
             } else {
-                setAuthState({ 
-                    status: "error", 
+                setAuthState({
+                    status: "error",
                     error: "Failed to fetch onboarding status"
                 });
             }
         } catch (error) {
             console.error('Error checking onboarding status:', error);
-            setAuthState({ 
-                status: "error", 
+            setAuthState({
+                status: "error",
                 error: error instanceof Error ? error.message : "Onboarding status check failed"
             });
         }
@@ -97,7 +97,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const login = async (token: string, refreshToken?: string) => {
         setAuthState({ status: "loading" });
-        
+
         try {
             // Store tokens securely
             await SecureStore.setItemAsync('access_token', token);
@@ -110,11 +110,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 const userResult = await UserRepo.WhoAmI(token);
                 if (userResult.success) {
                     dispatch(setSession(userResult.data));
-                    
+
                     // Check onboarding status
-                    const onboardingResult = await UserRepo.GetOnboardingStatus(token);
+                    const onboardingResult = await CalendarRepo.GetOnboardingStatus(token);
                     const hasCompletedOnboarding = onboardingResult.success ? (onboardingResult.data.completed || false) : false;
-                    
+
                     setAuthState({
                         status: "authenticated",
                         hasCompletedOnboarding
@@ -128,16 +128,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 // Clear tokens if user fetch fails
                 await SecureStore.deleteItemAsync('access_token');
                 await SecureStore.deleteItemAsync('refresh_token');
-                setAuthState({ 
-                    status: "error", 
+                setAuthState({
+                    status: "error",
                     error: userError instanceof Error ? userError.message : "Login failed"
                 });
                 throw userError;
             }
         } catch (error) {
             console.error('Error during login:', error);
-            setAuthState({ 
-                status: "error", 
+            setAuthState({
+                status: "error",
                 error: error instanceof Error ? error.message : "Login failed"
             });
             throw error;

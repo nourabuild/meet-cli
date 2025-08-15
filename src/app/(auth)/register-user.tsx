@@ -68,7 +68,7 @@ function RegisterScreen() {
         visible: confirmPasswordVisible,
         toggleVisibility: toggleConfirmPasswordVisibility
     } = usePasswordVisibility();
-    
+
     const backgroundColor = useThemeColor({}, 'background');
     const textColor = useThemeColor({}, 'text');
     const cardColor = useThemeColor({}, 'card');
@@ -147,7 +147,7 @@ function RegisterScreen() {
                 >
                     <View style={styles.formContainer}>
                         <NouraImage
-                            source={require("../../assets/icon.png")}
+                            source={require("../../../assets/icon.png")}
                             style={styles.logo}
                             containerStyle={styles.logoContainer}
                             resizeMode="contain"

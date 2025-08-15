@@ -140,26 +140,26 @@ export namespace Meetings {
         currentUserId?: string;
     }): ValidationErrors => {
         const errors: ValidationErrors = {};
-        
+
         const titleError = validateTitle(data.title);
         if (titleError) errors.title = titleError;
-        
+
         const typeError = validateType(data.type);
         if (typeError) errors.type = typeError;
-        
+
         const locationError = validateLocation(data.location);
         if (locationError) errors.location = locationError;
-        
+
         if (data.date) {
             const dateError = validateDate(data.date);
             if (dateError) errors.date = dateError;
         }
-        
+
         if (data.participants && data.currentUserId) {
             const participantsError = validateParticipants(data.participants, data.currentUserId);
             if (participantsError) errors.participants = participantsError;
         }
-        
+
         return errors;
     };
 
@@ -169,11 +169,14 @@ export namespace Meetings {
 
 }
 
+const API_ROUTE_DOMAIN = "api/v1/meeting";
+
+
 const NewMeetingRepository = (host: string): MeetingRepository => {
     return {
         GetMeetings: async (status: string, token: string): Promise<Meetings.Response> => {
             try {
-                const req = await fetch(`${host}/api/v1/meeting/index`, {
+                const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/index`, {
                     method: "GET",
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -195,7 +198,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                 if (!req.ok) {
                     // Handle specific HTTP status codes
                     let errorMessage = "Failed to fetch meetings";
-                    
+
                     if (req.status === 401) {
                         errorMessage = "COULD_NOT_VALIDATE_CREDENTIALS";
                     } else if (req.status === 403) {
@@ -205,7 +208,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                     } else if (req.status >= 500) {
                         errorMessage = "Server error. Please try again later.";
                     }
-                    
+
                     return {
                         success: false,
                         errors: response.errors || [{ field: "general", error: errorMessage }],
@@ -226,7 +229,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
             }
         },
         GetMeetingsRequests: async (status: string, token: string): Promise<Meetings.Response> => {
-            const req = await fetch(`${host}/api/v1/meeting/requests`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/requests`, {
                 method: "GET",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -250,7 +253,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
             } satisfies Meetings.Response;
         },
         ApproveMeetingByParticipant: async (id: string, token: string): Promise<Meetings.Response> => {
-            const req = await fetch(`${host}/api/v1/meeting/${id}/approve`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/${id}/approve`, {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -303,7 +306,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
             let title = '';
             let type = '';
             let location = '';
-            
+
             if (formDataParts) {
                 for (const [key, value] of formDataParts) {
                     if (key === 'title') title = value;
@@ -311,20 +314,20 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                     if (key === 'location') location = value;
                 }
             }
-            
+
             // Client-side validation before API call
             const validationErrors = Meetings.validateMeetingForm({ title, type, location });
             if (Meetings.hasValidationErrors(validationErrors)) {
                 const fieldErrors: Meetings.FieldError[] = Object.entries(validationErrors)
                     .filter(([_, error]) => error)
                     .map(([field, error]) => ({ field, error: error! }));
-                    
+
                 return {
                     success: false,
                     errors: fieldErrors,
                 } satisfies Meetings.Response;
             }
-            
+
             // Convert FormData to the expected JSON structure
             const requestData: {
                 meeting: Partial<Meetings.MeetingCreateInfo>;
@@ -365,7 +368,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
             }
 
             console.log("=== API Request Debug ===");
-            console.log("URL:", `${host}/api/v1/meeting/create`);
+            console.log("URL:", `${host}/${API_ROUTE_DOMAIN}/create`);
             console.log("Request data:", JSON.stringify(requestData, null, 2));
             console.log("Headers:", {
                 Authorization: `Bearer ${token}`,
@@ -415,7 +418,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
         },
 
         GetMeetingById: async (id: string, token: string): Promise<Meetings.Response> => {
-            const req = await fetch(`${host}/api/v1/meeting/${id}`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/${id}`, {
                 method: "GET",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -442,7 +445,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
         },
 
         GetParticipantsByMeetingId: async (id: string, token: string): Promise<Meetings.Response> => {
-            const req = await fetch(`${host}/api/v1/meetings/${id}/participants`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/${id}/participants`, {
                 method: "GET",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -466,7 +469,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
         },
 
         DeleteMeetingById: async (id: string, token: string): Promise<Meetings.Response> => {
-            const req = await fetch(`${host}/api/v1/meetings/${id}`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/${id}`, {
                 method: "DELETE",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -490,7 +493,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
         },
 
         AddParticipant: async (formData: FormData, token: string): Promise<Meetings.Response> => {
-            const req = await fetch(`${host}/api/v1/meetings/participants`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/participants`, {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -515,7 +518,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
         },
 
         DeleteParticipant: async (id: string, token: string): Promise<Meetings.Response> => {
-            const req = await fetch(`${host}/api/v1/meetings/participants/${id}`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/participants/${id}`, {
                 method: "DELETE",
                 headers: {
                     Authorization: `Bearer ${token}`,
