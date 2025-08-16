@@ -233,7 +233,7 @@ export default function FollowTabsScreen() {
             <View style={[styles.userItem, { backgroundColor }]}>
                 <TouchableOpacity
                     style={styles.userInfo}
-                    onPress={() => router.push(`/(tabs)/(home)/${user.account}`)}
+                    onPress={() => router.push(`/(stacks)/${user.account}`)}
                     activeOpacity={0.7}
                 >
                     <View style={styles.avatarFallback}>

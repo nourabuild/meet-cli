@@ -44,3 +44,8 @@ ios
 src/lib/hooks/usePushNotification.ts
 
 CLAUDE.md
+
+
+.github/workflows/maestro-tests.yml
+
+.maestro/

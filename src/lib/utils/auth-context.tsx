@@ -168,10 +168,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         checkAuth();
     }, [checkAuth]);
 
-    // Re-check auth whenever Redux user state changes
+    // Re-check auth only when user state becomes available after login
     useEffect(() => {
-        checkAuth();
-    }, [user, checkAuth]);
+        // Only re-check if we have a user but auth state isn't authenticated yet
+        if (user && authState.status !== "authenticated") {
+            checkAuth();
+        }
+    }, [user, authState.status, checkAuth]);
 
     return (
         <AuthContext.Provider value={{
