@@ -6,6 +6,7 @@ export interface Country {
 }
 
 export const countries: Country[] = [
+  { name: "Select Country", code: "", dialCode: "", flag: "" },
   { name: "China", code: "CN", dialCode: "+86", flag: "🇨🇳" },
   { name: "India", code: "IN", dialCode: "+91", flag: "🇮🇳" },
   { name: "Mexico", code: "MX", dialCode: "+52", flag: "🇲🇽" },

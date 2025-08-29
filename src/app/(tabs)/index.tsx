@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TouchableOpacity, FlatList } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity, FlatList, ScrollView } from "react-native";
 import { router } from "expo-router";
 import Feather from '@expo/vector-icons/Feather';
 import { useEffect, useState } from 'react';
@@ -11,14 +11,79 @@ import { Meetings } from "@/repo/meetings";
 import Navbar from "@/lib/utils/navigation-bar";
 
 // -------------------------------
-// State Management
+// State Management & Grouping
 // -------------------------------
+
+type MeetingSection = {
+  title: string;
+  data: Meetings.Meeting[];
+  count: number;
+};
 
 type MeetingsState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "error"; error: string }
-  | { status: "success"; data: Meetings.Meeting[] };
+  | { status: "success"; data: Meetings.Meeting[]; sections: MeetingSection[] };
+
+// Date grouping utility functions
+const formatDateSection = (date: Date): string => {
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  // Normalize dates to compare only the date part (not time)
+  const meetingDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const tomorrowDate = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
+
+  console.log('=== Date Comparison Debug ===');
+  console.log('Meeting date:', meetingDate.toDateString());
+  console.log('Today:', todayDate.toDateString());
+  console.log('Tomorrow:', tomorrowDate.toDateString());
+  console.log('Meeting === Today:', meetingDate.getTime() === todayDate.getTime());
+  console.log('Meeting === Tomorrow:', meetingDate.getTime() === tomorrowDate.getTime());
+
+  if (meetingDate.getTime() === todayDate.getTime()) {
+    return 'Today';
+  } else if (meetingDate.getTime() === tomorrowDate.getTime()) {
+    return 'Tomorrow';
+  } else {
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric'
+    });
+  }
+};
+
+const groupMeetingsByDate = (meetings: Meetings.Meeting[]): MeetingSection[] => {
+  // Group meetings by their start_time date
+  const grouped = meetings.reduce((acc, meeting) => {
+    const meetingDate = new Date(meeting.start_time);
+    const dateKey = meetingDate.toDateString();
+
+    if (!acc[dateKey]) {
+      acc[dateKey] = {
+        date: meetingDate,
+        meetings: []
+      };
+    }
+
+    acc[dateKey].meetings.push(meeting);
+    return acc;
+  }, {} as Record<string, { date: Date; meetings: Meetings.Meeting[] }>);
+
+  // Convert to sections array and sort by date
+  return Object.values(grouped)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .map(group => ({
+      title: formatDateSection(group.date),
+      data: group.meetings.sort((a, b) =>
+        new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+      ),
+      count: group.meetings.length
+    }));
+};
 
 export default function HomeScreen() {
   const backgroundColor = useThemeColor({}, 'background');
@@ -28,6 +93,7 @@ export default function HomeScreen() {
   const textSecondaryColor = useThemeColor({}, 'textSecondary');
 
   const [meetingsState, setMeetingsState] = useState<MeetingsState>({ status: "idle" });
+  const [activeTab, setActiveTab] = useState<string>('Today');
 
   const fetchMeetings = async () => {
     setMeetingsState({ status: "loading" });
@@ -41,28 +107,65 @@ export default function HomeScreen() {
         return;
       }
 
-      // Fetch meetings - using empty string for status since your backend doesn't seem to use it
-      const meetingResponse = await MeetingRepo.GetMeetings("", token);
-      console.log('Meetings response:', JSON.stringify(meetingResponse, null, 2));
+      // Fetch both owned meetings and participant meetings
+      const [ownedMeetingsResponse, participantMeetingsResponse] = await Promise.all([
+        MeetingRepo.GetMeetings("", token), // Meetings where user is owner
+        MeetingRepo.GetMeetingsRequests("", token) // Meetings where user is participant
+      ]);
 
-      if (meetingResponse.success) {
-        if (Array.isArray(meetingResponse.data)) {
-          // The data is already meetings from your API
-          const meetingsData = meetingResponse.data as Meetings.Meeting[];
-          setMeetingsState({ status: "success", data: meetingsData });
-        } else if (meetingResponse.data && 'title' in meetingResponse.data) {
-          // Single meeting
-          setMeetingsState({ status: "success", data: [meetingResponse.data as Meetings.Meeting] });
-        } else {
-          setMeetingsState({ status: "success", data: [] });
+      console.log('Owned meetings response:', JSON.stringify(ownedMeetingsResponse, null, 2));
+      console.log('Participant meetings response:', JSON.stringify(participantMeetingsResponse, null, 2));
+
+      const allMeetings: Meetings.Meeting[] = [];
+
+      // Process owned meetings
+      if (ownedMeetingsResponse.success) {
+        if (Array.isArray(ownedMeetingsResponse.data)) {
+          allMeetings.push(...(ownedMeetingsResponse.data as Meetings.Meeting[]));
+        } else if (ownedMeetingsResponse.data && 'title' in ownedMeetingsResponse.data) {
+          allMeetings.push(ownedMeetingsResponse.data as Meetings.Meeting);
         }
-      } else {
-        console.error('Failed to fetch meetings:', meetingResponse.errors);
-        setMeetingsState({
-          status: "error",
-          error: typeof meetingResponse.errors === "string" ? meetingResponse.errors : "Failed to fetch meetings"
-        });
       }
+
+      // Process participant meetings
+      if (participantMeetingsResponse.success) {
+        if (Array.isArray(participantMeetingsResponse.data)) {
+          const participantMeetings = participantMeetingsResponse.data as Meetings.Meeting[];
+          // Add participant meetings, but avoid duplicates
+          participantMeetings.forEach(meeting => {
+            if (!allMeetings.some(existing => existing.id === meeting.id)) {
+              allMeetings.push(meeting);
+            }
+          });
+        }
+      }
+
+      // Filter to only show approved meetings (for both owned and participated)
+      const approvedMeetings = allMeetings.filter(meeting => meeting.status.toLowerCase() === 'approved');
+      const sections = groupMeetingsByDate(approvedMeetings);
+
+      console.log('=== Meeting Debug Info ===');
+      console.log('All meetings:', allMeetings.length);
+      console.log('All meetings details:', allMeetings.map(m => ({
+        id: m.id,
+        title: m.title,
+        status: m.status,
+        start_time: m.start_time,
+        parsed_date: new Date(m.start_time).toDateString(),
+        dateSection: formatDateSection(new Date(m.start_time))
+      })));
+      console.log('Approved meetings:', approvedMeetings.length);
+      console.log('Approved meetings details:', approvedMeetings.map(m => ({
+        id: m.id,
+        title: m.title,
+        start_time: m.start_time,
+        parsed_date: new Date(m.start_time).toDateString(),
+        dateSection: formatDateSection(new Date(m.start_time))
+      })));
+      console.log('Generated sections:', sections.map(s => ({ title: s.title, count: s.count })));
+
+      setMeetingsState({ status: "success", data: allMeetings, sections });
+
     } catch (error) {
       console.error('Error fetching meetings:', error);
       setMeetingsState({
@@ -75,6 +178,17 @@ export default function HomeScreen() {
   useEffect(() => {
     fetchMeetings();
   }, []);
+
+  // Update active tab when sections change
+  useEffect(() => {
+    if (meetingsState.status === "success" && meetingsState.sections.length > 0) {
+      // Set the first available tab as active if current active tab doesn't exist
+      const availableTabs = meetingsState.sections.map(s => s.title);
+      if (!availableTabs.includes(activeTab)) {
+        setActiveTab(availableTabs[0]);
+      }
+    }
+  }, [meetingsState, activeTab]);
 
   const formatMeetingTime = (datetime: string) => {
     const date = new Date(datetime);
@@ -97,6 +211,22 @@ export default function HomeScreen() {
       default:
         return 'calendar';
     }
+  };
+
+  // Get the active tab's meetings
+  const getActiveMeetings = () => {
+    if (meetingsState.status !== "success") return [];
+    const activeSection = meetingsState.sections.find(section => section.title === activeTab);
+    return activeSection ? activeSection.data : [];
+  };
+
+  // Get available tabs from sections
+  const getAvailableTabs = () => {
+    if (meetingsState.status !== "success") return [];
+    return meetingsState.sections.map(section => ({
+      title: section.title,
+      count: section.count
+    }));
   };
 
   const renderMeetingCard = ({ item }: { item: Meetings.Meeting }) => (
@@ -161,9 +291,38 @@ export default function HomeScreen() {
         </View>
       </Navbar>
 
+      {getAvailableTabs().length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabScrollView}
+          contentContainerStyle={styles.tabContainer}
+        >
+          {getAvailableTabs().map((tab, index) => (
+            <TouchableOpacity
+              key={tab.title}
+              style={[
+                styles.tab,
+                activeTab === tab.title && styles.activeTab,
+                index === 0 && styles.firstTab
+              ]}
+              onPress={() => setActiveTab(tab.title)}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.tabText,
+                { color: activeTab === tab.title ? theme.colorWhite : textSecondaryColor }
+              ]}>
+                {tab.title} ({tab.count})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
       {/* Meetings List */}
       <FlatList
-        data={meetingsState.status === "success" ? meetingsState.data.filter(meeting => meeting.status.toLowerCase() === 'approved') : []}
+        data={getActiveMeetings()}
         renderItem={renderMeetingCard}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
@@ -172,19 +331,21 @@ export default function HomeScreen() {
           <View style={[styles.emptyCard, { backgroundColor: cardColor, borderColor: borderColor }]}>
             <View style={styles.emptyCardInner}>
               <View style={styles.emptyIconWrapper}>
-                <Feather name="calendar" size={28} color={useThemeColor({}, 'textSecondary')} />
+                <Feather name="calendar" size={28} color={textSecondaryColor} />
               </View>
               <Text style={[styles.emptyTitleBig, { color: textColor }]}>
                 {meetingsState.status === "loading" ? "Loading Meetings" :
                   meetingsState.status === "error" ? "Error Loading" :
-                    "No Upcoming Meetings"}
+                    getAvailableTabs().length === 0 ? "No Upcoming Meetings" : `No ${activeTab} Meetings`}
               </Text>
-              <Text style={[styles.emptySubtitleCenter, { color: useThemeColor({}, 'textSecondary') }]}>
+              <Text style={[styles.emptySubtitleCenter, { color: textSecondaryColor }]}>
                 {meetingsState.status === "loading"
                   ? "Please wait while we fetch your meetings."
                   : meetingsState.status === "error"
                     ? meetingsState.error
-                    : "Scheduled meetings relevant to you, regardless of your role as organizer or attendee."}
+                    : getAvailableTabs().length === 0
+                      ? "Scheduled meetings relevant to you, regardless of your role as organizer or attendee."
+                      : `No meetings scheduled for ${activeTab.toLowerCase()}.`}
               </Text>
 
               {meetingsState.status !== "loading" && (
@@ -243,6 +404,32 @@ const styles = StyleSheet.create({
     paddingTop: 20, // Adjusted top padding for symmetry with dynamic island
     paddingHorizontal: 20,
     paddingBottom: 20,
+  },
+  tabScrollView: {
+    flexGrow: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colorLightGrey,
+  },
+  tabContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  tab: {
+    backgroundColor: theme.colorLightGrey,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 12,
+  },
+  firstTab: {
+    marginLeft: 0,
+  },
+  activeTab: {
+    backgroundColor: theme.colorNouraBlue,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   meetingCard: {
     borderRadius: 16,

@@ -23,3 +23,8 @@ run2:
 	expo start --port 19001 
 
 # npx expo run:ios --device "iPhone 15 Plus"
+
+
+maestro:
+	maestro test .maestro/flows/auth-flow.yaml
+#	maestro test .maestro/flows/smoke-test.yaml

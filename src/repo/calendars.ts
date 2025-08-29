@@ -194,6 +194,15 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
             const startTimeValue = formData.get("start_time") as string;
             const endTimeValue = formData.get("end_time") as string;
             const isAvailableValue = formData.get("is_available") as string;
+            const isFullDayValue = formData.get("is_full_day") as string;
+
+            console.log('AddUserExceptionDate - FormData values:', {
+                exception_date: exceptionDateValue,
+                start_time: startTimeValue,
+                end_time: endTimeValue,
+                is_available: isAvailableValue,
+                is_full_day: isFullDayValue
+            });
 
             if (!exceptionDateValue) {
                 errors.push({ field: "exception_date", error: "Exception date is required" });
@@ -201,11 +210,17 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                 data.exception_date = exceptionDateValue;
             }
 
-            if (!startTimeValue || !endTimeValue) {
-                errors.push({ field: "availability", error: "Start and end times are required" });
-            } else {
-                data.start_time = startTimeValue;
-                data.end_time = endTimeValue;
+            const isFullDay = isFullDayValue === 'true';
+            data.is_full_day = isFullDay;
+
+            if (!isFullDay) {
+                // Only validate start/end times for non-full-day exceptions
+                if (!startTimeValue || !endTimeValue) {
+                    errors.push({ field: "availability", error: "Start and end times are required for non-full-day exceptions" });
+                } else {
+                    data.start_time = startTimeValue;
+                    data.end_time = endTimeValue;
+                }
             }
 
             data.is_available = isAvailableValue === 'true';
@@ -217,7 +232,9 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                 } satisfies Calendars.Response;
             }
 
-            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/exception/date`, {
+            console.log('AddUserExceptionDate - Sending data to API:', data);
+            
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/exceptions`, {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -227,10 +244,18 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                 body: JSON.stringify(data),
             });
             const response = await req.json();
+            
+            console.log('AddUserExceptionDate - API Response:', { 
+                status: req.status, 
+                statusText: req.statusText, 
+                ok: req.ok,
+                response: response 
+            });
+            
             if (!req.ok) {
                 return {
                     success: false,
-                    errors: [{ field: "exception_date", error: response.message || "Failed to save exception date" }],
+                    errors: [{ field: "exception_date", error: response.message || response.detail || "Failed to save exception date" }],
                 } satisfies Calendars.Response;
             }
 

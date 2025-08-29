@@ -29,9 +29,10 @@ interface WeeklySchedule {
 
 interface ExceptionDate {
     exception_date: string;
-    start_time: string;
-    end_time: string;
+    start_time?: string;
+    end_time?: string;
     is_available: boolean;
+    is_full_day?: boolean;
 }
 
 const DAYS_OF_WEEK = [
@@ -139,11 +140,23 @@ export default function AvailabilityScreen() {
     // Prevent double-invocation of effects in React 18 StrictMode (dev)
     const didLoadRef = useRef(false);
 
+    // Helper: Normalize exception data from API - convert 'date' field to 'exception_date' 
+    const normalizeExceptions = (items: any[]): ExceptionDate[] => {
+        return items.map(item => ({
+            exception_date: item.exception_date || item.date,
+            start_time: item.start_time,
+            end_time: item.end_time,
+            is_available: item.is_available,
+            is_full_day: item.is_full_day
+        }));
+    };
+
     // Helper: Dedupe exception dates by composite key
-    const dedupeExceptions = (items: ExceptionDate[]) => {
+    const dedupeExceptions = (items: any[]) => {
+        const normalizedItems = normalizeExceptions(items);
         const map = new Map<string, ExceptionDate>();
-        for (const e of items) {
-            const key = `${e.exception_date}|${e.start_time}|${e.end_time}|${e.is_available ? 1 : 0}`;
+        for (const e of normalizedItems) {
+            const key = `${e.exception_date}|${e.start_time || ''}|${e.end_time || ''}|${e.is_available ? 1 : 0}|${e.is_full_day ? 1 : 0}`;
             // Use the first occurrence; change to overwrite if server returns updates
             if (!map.has(key)) map.set(key, e);
         }
@@ -207,10 +220,16 @@ export default function AvailabilityScreen() {
                 // Load exception dates
                 const getExceptionsResponse = await CalendarRepo.GetUserExceptionDates(token);
                 console.log('Exception dates response:', getExceptionsResponse);
-                if (getExceptionsResponse.success && getExceptionsResponse.data && Array.isArray(getExceptionsResponse.data.exceptions)) {
-                    setExceptions(dedupeExceptions(getExceptionsResponse.data.exceptions));
-                } else if (getExceptionsResponse.success && Array.isArray(getExceptionsResponse.data)) {
-                    setExceptions(dedupeExceptions(getExceptionsResponse.data));
+                if (getExceptionsResponse.success && getExceptionsResponse.data) {
+                    if (Array.isArray(getExceptionsResponse.data)) {
+                        console.log('Raw exception data:', getExceptionsResponse.data);
+                        setExceptions(dedupeExceptions(getExceptionsResponse.data));
+                    } else if (Array.isArray(getExceptionsResponse.data.exceptions)) {
+                        console.log('Raw exception data from .exceptions:', getExceptionsResponse.data.exceptions);
+                        setExceptions(dedupeExceptions(getExceptionsResponse.data.exceptions));
+                    } else {
+                        setExceptions([]);
+                    }
                 } else {
                     console.log('No exception dates found or failed to load');
                     if (!getExceptionsResponse.success) {
@@ -248,8 +267,8 @@ export default function AvailabilityScreen() {
             // First, delete all existing availability entries to prevent duplicates
             console.log('=== DELETING EXISTING AVAILABILITY ===');
             const existingResult = await CalendarRepo.GetUserWeeklyAvailability(token);
-            if (existingResult.success && existingResult.data && Array.isArray(existingResult.data.entries)) {
-                for (const existingEntry of existingResult.data.entries) {
+            if (existingResult.success && existingResult.data && Array.isArray(existingResult.data)) {
+                for (const existingEntry of existingResult.data) {
                     const deleteResult = await CalendarRepo.DeleteUserWeeklyAvailabilityById(existingEntry.id, token);
                     if (!deleteResult.success) {
                         console.error(`Failed to delete availability entry ${existingEntry.id}:`, deleteResult.errors);
@@ -289,15 +308,35 @@ export default function AvailabilityScreen() {
             // Dedupe exceptions before saving to avoid creating duplicates on server
             const uniqueExceptions = dedupeExceptions(exceptions);
             for (const exception of uniqueExceptions) {
+                // Validate exception data before saving - handle both date and exception_date fields
+                const exceptionDate = exception.exception_date;
+                if (!exceptionDate) {
+                    console.error('Invalid exception data:', exception);
+                    throw new Error(`Invalid exception data: missing exception_date`);
+                }
+
+                // For full-day exceptions, start_time and end_time are not required
+                if (!exception.is_full_day && (!exception.start_time || !exception.end_time)) {
+                    console.error('Invalid exception data:', exception);
+                    throw new Error(`Invalid exception data: missing start_time or end_time for non-full-day exception`);
+                }
+
                 const formData = new FormData();
-                formData.append('exception_date', exception.exception_date);
-                formData.append('start_time', exception.start_time);
-                formData.append('end_time', exception.end_time);
+                formData.append('exception_date', exceptionDate);
+                
+                if (exception.is_full_day) {
+                    formData.append('is_full_day', 'true');
+                } else {
+                    formData.append('start_time', exception.start_time || '');
+                    formData.append('end_time', exception.end_time || '');
+                    formData.append('is_full_day', 'false');
+                }
+                
                 formData.append('is_available', exception.is_available.toString());
 
                 const result = await CalendarRepo.AddUserExceptionDate(formData, token);
                 if (!result.success) {
-                    throw new Error(`Failed to save exception date ${exception.exception_date}`);
+                    throw new Error(`Failed to save exception date ${exceptionDate}: ${result.errors?.[0]?.error || 'Unknown error'}`);
                 }
             }
 
@@ -571,15 +610,35 @@ export default function AvailabilityScreen() {
             // Dedupe exceptions before saving to avoid creating duplicates on server
             const uniqueExceptions = dedupeExceptions(exceptions);
             for (const exception of uniqueExceptions) {
+                // Validate exception data before saving - handle both date and exception_date fields
+                const exceptionDate = exception.exception_date;
+                if (!exceptionDate) {
+                    console.error('Invalid exception data:', exception);
+                    throw new Error(`Invalid exception data: missing exception_date`);
+                }
+
+                // For full-day exceptions, start_time and end_time are not required
+                if (!exception.is_full_day && (!exception.start_time || !exception.end_time)) {
+                    console.error('Invalid exception data:', exception);
+                    throw new Error(`Invalid exception data: missing start_time or end_time for non-full-day exception`);
+                }
+
                 const formData = new FormData();
-                formData.append('exception_date', exception.exception_date);
-                formData.append('start_time', exception.start_time);
-                formData.append('end_time', exception.end_time);
+                formData.append('exception_date', exceptionDate);
+                
+                if (exception.is_full_day) {
+                    formData.append('is_full_day', 'true');
+                } else {
+                    formData.append('start_time', exception.start_time || '');
+                    formData.append('end_time', exception.end_time || '');
+                    formData.append('is_full_day', 'false');
+                }
+                
                 formData.append('is_available', exception.is_available.toString());
 
                 const result = await CalendarRepo.AddUserExceptionDate(formData, token);
                 if (!result.success) {
-                    throw new Error(`Failed to save exception date ${exception.exception_date}`);
+                    throw new Error(`Failed to save exception date ${exceptionDate}: ${result.errors?.[0]?.error || 'Unknown error'}`);
                 }
             }
 
@@ -882,13 +941,18 @@ export default function AvailabilityScreen() {
                                 </View>
                             ) : (
                                 exceptions.map((exception, index) => {
+                                    console.log(`Exception ${index}:`, exception);
                                     const exceptionDate = new Date(exception.exception_date);
-                                    const formattedDate = exceptionDate.toLocaleDateString('en-US', {
-                                        weekday: 'short',
-                                        month: 'short',
-                                        day: 'numeric',
-                                        year: 'numeric'
-                                    });
+                                    const isValidDate = !isNaN(exceptionDate.getTime());
+                                    console.log(`Date parsing for ${exception.exception_date}:`, { exceptionDate, isValidDate });
+                                    const formattedDate = isValidDate 
+                                        ? exceptionDate.toLocaleDateString('en-US', {
+                                            weekday: 'short',
+                                            month: 'short',
+                                            day: 'numeric',
+                                            year: 'numeric'
+                                        })
+                                        : exception.exception_date || 'Invalid Date';
 
                                     return (
                                         <View key={index} style={[styles.exceptionCard, { backgroundColor: cardColor }]}>

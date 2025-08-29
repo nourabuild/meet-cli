@@ -47,8 +47,8 @@ export default function CountryPicker({ selectedCountry, onSelect, style }: Coun
       activeOpacity={0.7}
     >
       <View style={styles.countryItemLeft}>
-        <Text style={styles.flag}>{item.flag}</Text>
-        <Text style={[styles.countryName, { color: textColor }]}>{item.name}</Text>
+        {item.flag ? <Text style={styles.flag}>{item.flag}</Text> : null}
+        <Text style={[styles.countryName, { color: textColor, marginLeft: item.flag ? 12 : 0 }]}>{item.name}</Text>
       </View>
       <Text style={[styles.dialCode, { color: textColor }]}>{item.dialCode}</Text>
     </TouchableOpacity>
@@ -61,8 +61,10 @@ export default function CountryPicker({ selectedCountry, onSelect, style }: Coun
         onPress={() => setModalVisible(true)}
         activeOpacity={0.7}
       >
-        <Text style={styles.flag}>{selectedCountry.flag}</Text>
-        <Text style={[styles.dialCode, { color: textColor }]}>{selectedCountry.dialCode}</Text>
+        <View style={styles.triggerLeft}>
+          {selectedCountry.flag ? <Text style={styles.flag}>{selectedCountry.flag}</Text> : null}
+          <Text style={[styles.dialCode, { color: textColor }]}>{selectedCountry.dialCode}</Text>
+        </View>
         <Feather name="chevron-down" size={16} color={theme.colorGrey} />
       </TouchableOpacity>
 
@@ -130,13 +132,19 @@ const styles = StyleSheet.create({
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: theme.colorLightGrey,
     borderRadius: 12,
     minHeight: 48,
+  },
+  triggerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+    flex: 1,
   },
   flag: {
     fontSize: 20,

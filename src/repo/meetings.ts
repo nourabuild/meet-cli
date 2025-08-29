@@ -391,6 +391,11 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
             console.log("Status Text:", req.statusText);
             console.log("OK:", req.ok);
 
+            const errorMessages: Record<string, string> = {
+                "PARTICIPANTS_UNAVAILABLE": "Participants are unavailable",
+            };
+
+
             let response;
             try {
                 response = await req.json();
@@ -405,9 +410,41 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
             }
 
             if (!req.ok) {
+                let processedErrors: Meetings.FieldError[] = [{ field: "general", error: "Failed to create meeting" }];
+                
+                // Handle different API response formats
+                if (response.errors && Array.isArray(response.errors)) {
+                    // Standard array format
+                    processedErrors = response.errors.map((error: any) => {
+                        if (error.error && errorMessages[error.error]) {
+                            return { ...error, error: errorMessages[error.error] };
+                        }
+                        return error;
+                    });
+                } else if (response.error && typeof response.error === 'string') {
+                    // Single error string format
+                    const friendlyMessage = errorMessages[response.error] || response.error;
+                    processedErrors = [{ field: "general", error: friendlyMessage }];
+                } else if (response.message && typeof response.message === 'string') {
+                    // Message field format
+                    const friendlyMessage = errorMessages[response.message] || response.message;
+                    processedErrors = [{ field: "general", error: friendlyMessage }];
+                } else if (response.errors && typeof response.errors === 'string') {
+                    // String errors field
+                    const friendlyMessage = errorMessages[response.errors] || response.errors;
+                    processedErrors = [{ field: "general", error: friendlyMessage }];
+                } else if (response.errors && typeof response.errors === 'object') {
+                    // Object errors field - convert to array
+                    processedErrors = Object.entries(response.errors).map(([field, error]: [string, any]) => {
+                        const errorText = typeof error === 'string' ? error : error.toString();
+                        const friendlyMessage = errorMessages[errorText] || errorText;
+                        return { field, error: friendlyMessage };
+                    });
+                }
+                
                 return {
                     success: false,
-                    errors: response.errors || [{ field: "general", error: "Failed to create meeting" }],
+                    errors: processedErrors,
                 } satisfies Meetings.Response;
             }
 

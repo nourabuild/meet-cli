@@ -77,7 +77,7 @@ function formReducer(state: FormFields, action: { name: keyof FormFields; value:
 
 export default function NewMeeting() {
     const currentUser = useReduxSelector((state) => state.user);
-    
+
     const textColor = useThemeColor({}, 'text');
     const cardColor = useThemeColor({}, 'card');
 
@@ -132,12 +132,12 @@ export default function NewMeeting() {
 
     const handleFieldBlur = (name: keyof FieldValidationState, value: string) => {
         setTouchedFields(prev => ({ ...prev, [name]: true }));
-        
+
         let error: string | undefined;
         if (name === 'title') error = Meetings.validateTitle(value);
         else if (name === 'meetingType') error = Meetings.validateType(value);
         else if (name === 'location') error = Meetings.validateLocation(value);
-        
+
         setValidationErrors(prev => ({
             ...prev,
             [name === 'meetingType' ? 'type' : name]: error
@@ -146,14 +146,14 @@ export default function NewMeeting() {
 
     const handleChange = (name: keyof FormFields, value: string) => {
         dispatch({ name, value });
-        
+
         // Real-time validation for touched fields
         if (touchedFields[name as keyof FieldValidationState]) {
             let error: string | undefined;
             if (name === 'title') error = Meetings.validateTitle(value);
             else if (name === 'meetingType') error = Meetings.validateType(value);
             else if (name === 'location') error = Meetings.validateLocation(value);
-            
+
             setValidationErrors(prev => ({
                 ...prev,
                 [name === 'meetingType' ? 'type' : name]: error
@@ -170,7 +170,7 @@ export default function NewMeeting() {
             participants: formState.participants,
             currentUserId: currentUser?.id,
         });
-        
+
         setValidationErrors(validationResult);
         setTouchedFields({
             title: true,
@@ -179,7 +179,7 @@ export default function NewMeeting() {
             date: true,
             participants: true,
         });
-        
+
         return !Meetings.hasValidationErrors(validationResult);
     };
 
@@ -196,7 +196,7 @@ export default function NewMeeting() {
     const handleDatePickerDone = () => {
         setDate(tempDate);
         setShowDatePicker(false);
-        
+
         // Validate date if field has been touched
         if (touchedFields.date) {
             const error = Meetings.validateDate(tempDate);
@@ -215,7 +215,7 @@ export default function NewMeeting() {
     const openDatePicker = () => {
         setTempDate(date); // Initialize temp date with current date
         setShowDatePicker(true);
-        
+
         // Mark date field as touched when user interacts with it
         setTouchedFields(prev => ({ ...prev, date: true }));
     };
@@ -269,7 +269,7 @@ export default function NewMeeting() {
             setCreateMeetingState({ status: "error", error: "Please fix the errors above before submitting" });
             return;
         }
-        
+
         setCreateMeetingState({ status: "loading" });
 
         const { title, meetingType, assignedTo, location } = formState;
@@ -323,14 +323,14 @@ export default function NewMeeting() {
 
             if (!result.success) {
                 console.error("Meeting creation failed:", result.errors);
-                
+
                 let errorMessage = "Failed to create meeting";
                 if (Array.isArray(result.errors)) {
                     errorMessage = result.errors.map(err => `${err.field}: ${err.error}`).join(", ");
                 } else if (typeof result.errors === "string") {
                     errorMessage = result.errors;
                 }
-                
+
                 setCreateMeetingState({
                     status: "error",
                     error: errorMessage,
@@ -528,7 +528,7 @@ export default function NewMeeting() {
                                                     style={styles.removeChipButton}
                                                     onPress={() => {
                                                         dispatch({ type: 'REMOVE_PARTICIPANT', participantId: participant.id });
-                                                        
+
                                                         // Validate participants after removal if field has been touched
                                                         if (touchedFields.participants) {
                                                             const newParticipants = formState.participants.filter(p => p.id !== participant.id);
