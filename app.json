@@ -47,7 +47,8 @@
           "microphonePermission": "Allow Noura to access your microphone",
           "recordAudioAndroid": true
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "router": {},
