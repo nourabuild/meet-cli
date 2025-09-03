@@ -55,20 +55,16 @@ export default function RequestsScreen() {
                 // Get access token
                 const token = await SecureStore.getItemAsync('access_token');
                 if (!token) {
-                    console.log('No access token found');
                     setRequestsState({ status: "error", error: "Authentication required. Please log in again." });
                     return;
                 }
 
                 // Fetch ALL meeting requests (not filtered by status)
                 const requestsResponse = await MeetingRepo.GetMeetingsRequests("", token); // Empty string to get all
-                console.log('All requests response:', JSON.stringify(requestsResponse, null, 2));
-
                 if (requestsResponse.success) {
                     if (Array.isArray(requestsResponse.data)) {
                         // Transform meetings into participants with meeting data
                         const meetingsData = requestsResponse.data as Meetings.Meeting[];
-                        console.log('Meetings data:', meetingsData.length, 'items');
                         const participantsWithMeetings: ParticipantWithMeeting[] = [];
 
                         meetingsData.forEach(meeting => {

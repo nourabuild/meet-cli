@@ -210,7 +210,6 @@ export default function CalendarView({
                                             style={[styles.meetingSlot, { backgroundColor: '#3B82F6' }]}
                                             onPress={() => {
                                                 // Handle meeting press
-                                                console.log('Meeting pressed:', meeting.title);
                                             }}
                                         >
                                             <Text style={[styles.meetingSlotTitle, { color: '#FFFFFF' }]} numberOfLines={1}>

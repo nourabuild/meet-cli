@@ -21,7 +21,7 @@ export interface CalendarRepository {
     GetUserWeeklyAvailability: (token: string) => Promise<Calendars.Response>;
     GetUserExceptionDates: (token: string) => Promise<Calendars.Response>;
     GetOnboardingStatus: (token: string) => Promise<Calendars.OnboardingResponse>;
-    AddUserWeeklyAvailability: (dayOfWeek: number, intervals: any[], token: string) => Promise<Calendars.Response>;
+    AddUserWeeklyAvailability: (dayOfWeek: number, intervals: Calendars.TimeInterval[], token: string) => Promise<Calendars.Response>;
     AddUserExceptionDate: (formData: FormData, token: string) => Promise<Calendars.Response>;
     AddUserAvailability: (formData: FormData, token: string) => Promise<Calendars.Response>;
     DeleteUserWeeklyAvailabilityById: (calendarId: string, token: string) => Promise<Calendars.Response>;

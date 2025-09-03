@@ -86,51 +86,40 @@ export default function ProfileScreen() {
                 // Get access token
                 const token = await SecureStore.getItemAsync('access_token');
                 if (!token) {
-                    console.log('No access token found');
                     setProfileState({ status: "error", error: "No access token found" });
                     return;
                 }
 
                 // Fetch following count
                 const followingResponse = await FollowRepo.GetFollowing(currentUser.account, token);
-                console.log('Following response:', JSON.stringify(followingResponse, null, 2));
-
                 let followingCount = 0;
                 if (followingResponse.success) {
                     // Check if response has count property, otherwise use data array length
                     if (typeof followingResponse.data === 'object' && followingResponse.data && 'count' in followingResponse.data) {
                         const count = (followingResponse.data as any).count;
-                        console.log('Using count from response:', count);
                         if (typeof count === 'number') {
                             followingCount = count;
                         }
                     } else if (Array.isArray(followingResponse.data)) {
-                        console.log('Using array length:', followingResponse.data.length);
                         followingCount = followingResponse.data.length;
                     } else {
-                        console.log('Using fallback count: 1');
                         followingCount = 1;
                     }
                 }
 
                 // Fetch followers count
                 const followersResponse = await FollowRepo.GetFollowers(currentUser.account, token);
-                console.log('Followers response:', JSON.stringify(followersResponse, null, 2));
-
                 let followersCount = 0;
                 if (followersResponse.success) {
                     // Check if response has count property, otherwise use data array length
                     if (typeof followersResponse.data === 'object' && followersResponse.data && 'count' in followersResponse.data) {
                         const count = (followersResponse.data as any).count;
-                        console.log('Using count from response:', count);
                         if (typeof count === 'number') {
                             followersCount = count;
                         }
                     } else if (Array.isArray(followersResponse.data)) {
-                        console.log('Using array length:', followersResponse.data.length);
                         followersCount = followersResponse.data.length;
                     } else {
-                        console.log('Using fallback count: 1');
                         followersCount = 1;
                     }
                 }

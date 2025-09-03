@@ -120,7 +120,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
                         hasCompletedOnboarding
                     });
                 } else {
-                    console.log('User fetch failed during login:', userResult.errors);
                     throw new Error('Failed to fetch user data');
                 }
             } catch (userError) {

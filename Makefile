@@ -28,3 +28,16 @@ run2:
 maestro:
 	maestro test .maestro/flows/auth-flow.yaml
 #	maestro test .maestro/flows/smoke-test.yaml
+
+
+testflight:
+	npx testflight
+
+
+#::: ^\s*console\.log\(.*\);\s*\n?
+
+flash:
+	gemini --model gemini-2.5-flash
+
+pro:
+	gemini --model gemini-2.5-pro

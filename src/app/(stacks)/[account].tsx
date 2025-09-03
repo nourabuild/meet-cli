@@ -52,15 +52,12 @@ export default function ShowUserScreen() {
             try {
                 const token = await SecureStore.getItemAsync('access_token');
                 if (!token) {
-                    console.log('No access token found');
                     setUserState({ status: "error", error: "Authentication required. Please log in again." });
                     return;
                 }
 
                 // Fetch user data
                 const userResponse = await UserRepo.GetByAccount(params.account, token);
-                console.log('GetByAccount response:', JSON.stringify(userResponse, null, 2));
-
                 if (!userResponse.success) {
                     console.error('Failed to fetch user data:', userResponse.errors);
                     setUserState({
@@ -76,15 +73,11 @@ export default function ShowUserScreen() {
 
                 // Get follow counts for the user using GetUsersFollowCount
                 const followCountResponse = await FollowRepo.GetUsersFollowCount(userData.id, token);
-                console.log('Follow count response:', JSON.stringify(followCountResponse, null, 2));
-
                 let followersCount = 0;
                 let followingCount = 0;
 
                 if (followCountResponse.success && followCountResponse.data) {
                     const countData = followCountResponse.data as any;
-                    console.log('Count data structure:', countData);
-
                     // Try different possible response formats
                     if (typeof countData === 'object') {
                         // Check for various possible field names
@@ -92,17 +85,12 @@ export default function ShowUserScreen() {
                             countData.followers || countData.follower_count || 0;
                         followingCount = countData.following_count || countData.followingCount ||
                             countData.following || countData.follow_count || 0;
-
-                        console.log('Parsed counts - Followers:', followersCount, 'Following:', followingCount);
                     }
                 } else {
-                    console.log('Follow count response failed or no data:', followCountResponse);
                 }
 
                 // Check if current user is following this user
                 const myFollowingResponse = await FollowRepo.GetFollowing("", token); // Get my following list
-                console.log('My following response:', JSON.stringify(myFollowingResponse, null, 2));
-
                 let isCurrentlyFollowing = false;
                 if (myFollowingResponse.success && Array.isArray(myFollowingResponse.data)) {
                     // Check if the target user's ID is in my following list

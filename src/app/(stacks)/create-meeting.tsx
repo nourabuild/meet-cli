@@ -86,13 +86,6 @@ export default function NewMeeting() {
         const browserLocale = navigator.language || 'en-US';
         const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-
-        console.log('=== User Locale Information ===');
-        console.log('Detected locale:', locale);
-        console.log('Browser locale:', browserLocale);
-        console.log('Timezone:', timeZone);
-        console.log('Sample date format:', new Date().toLocaleDateString(locale));
-        console.log('Sample time format:', new Date().toLocaleTimeString(locale));
     }, []);
 
     const [formState, dispatch] = useReducer(formReducer, {
@@ -280,15 +273,6 @@ export default function NewMeeting() {
                 setCreateMeetingState({ status: "error", error: "Authentication required. Please log in again." });
                 return;
             }
-
-            console.log("=== Create Meeting Form Data ===");
-            console.log("Form state:", formState);
-            console.log("Date selected:", formatDate(date));
-            console.log("Date for backend (ISO):", formatDateForBackend(date));
-            console.log("Timezone info:", getTimezoneInfo());
-            console.log("Current user:", currentUser);
-            console.log("All participants:", formState.participants);
-
             // Create FormData for the meeting
             const formData = new FormData();
             formData.append('title', title.trim());
@@ -299,28 +283,16 @@ export default function NewMeeting() {
 
             if (assignedTo.trim()) {
                 formData.append('assigned_to', assignedTo.trim());
-                console.log("Added assigned_to:", assignedTo.trim());
             }
 
             // Add participant user IDs (excluding current user as they're automatically added by backend)
             const participantIds = formState.participants
                 .filter((p: Users.User) => p.id !== currentUser?.id)
                 .map((p: Users.User) => p.id);
-
-            console.log("Participant IDs to send:", participantIds);
-
             participantIds.forEach((participantId: string, index: number) => {
                 formData.append(`participants[${index}]`, participantId);
-                console.log(`Added participants[${index}]:`, participantId);
             });
-
-            console.log("About to call MeetingRepo.CreateMeetingWithParticipants");
-
             const result = await MeetingRepo.CreateMeetingWithParticipants(formData, token);
-
-            console.log("=== API Response ===");
-            console.log("Result:", result);
-
             if (!result.success) {
                 console.error("Meeting creation failed:", result.errors);
 

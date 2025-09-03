@@ -43,27 +43,17 @@ export default function MeetingDetailScreen() {
             try {
                 const token = await SecureStore.getItemAsync('access_token');
                 if (!token) {
-                    console.log('No access token found');
                     setMeetingState({ status: "error", error: "Authentication required. Please log in again." });
                     return;
                 }
 
                 const response = await MeetingRepo.GetMeetingById(id, token);
-                console.log('GetMeetingById response:', JSON.stringify(response, null, 2));
-
                 if (response.success) {
                     if (!Array.isArray(response.data)) {
                         let meetingData = response.data as Meetings.Meeting;
-                        console.log('Meeting data participants:', JSON.stringify(meetingData.participants, null, 2));
-                        console.log('Number of participants:', meetingData.participants?.length || 0);
-
                         // If participants are empty or missing, fetch them separately
                         if (!meetingData.participants || meetingData.participants.length === 0) {
-                            console.log('Participants not included in meeting data, fetching separately...');
-
                             const participantsResponse = await MeetingRepo.GetParticipantsByMeetingId(id, token);
-                            console.log('GetParticipantsByMeetingId response:', JSON.stringify(participantsResponse, null, 2));
-
                             if (participantsResponse.success) {
                                 const participantsData = Array.isArray(participantsResponse.data)
                                     ? participantsResponse.data
@@ -73,15 +63,12 @@ export default function MeetingDetailScreen() {
                                     ...meetingData,
                                     participants: participantsData as Meetings.Participant[]
                                 };
-
-                                console.log('Updated meeting data with participants:', JSON.stringify(meetingData.participants, null, 2));
                             } else {
                                 console.error('Failed to fetch participants:', participantsResponse.errors);
                             }
                         }
 
                         if (meetingData.participants && meetingData.participants.length > 0) {
-                            console.log('First participant user data:', JSON.stringify(meetingData.participants[0].user, null, 2));
                         }
 
                         setMeetingState({ status: "success", data: meetingData });
@@ -130,31 +117,22 @@ export default function MeetingDetailScreen() {
     };
 
     const handleParticipantPress = async (account: string) => {
-        console.log('Participant pressed:', account);
-        console.log('Current user account:', currentUser?.account);
-        console.log('Is current user?', account === currentUser?.account);
-
         try {
             const token = await SecureStore.getItemAsync('access_token');
             if (!token) {
-                console.log('No access token found');
                 return;
             }
 
             // Check if this is the current user
             if (account === currentUser?.account) {
-                console.log('Navigating to own profile (profile tab)');
                 // Navigate to the profile tab for current user
                 router.dismiss();
                 setTimeout(() => {
                     router.push('/(tabs)/profile');
                 }, 100);
             } else {
-                console.log('Navigating to other user profile:', account);
                 // Fetch user data by account for other users
                 const userResponse = await UserRepo.GetByAccount(account, token);
-                console.log('GetByAccount response:', userResponse);
-
                 if (userResponse.success) {
                     // Navigate to dynamic [account] route for other users
                     router.dismiss();
@@ -177,9 +155,6 @@ export default function MeetingDetailScreen() {
             key={participant.id}
             style={[styles.participantItem, { backgroundColor: cardColor, borderColor }]}
             onPress={() => {
-                console.log('Full participant data:', JSON.stringify(participant, null, 2));
-                console.log('participant.user:', JSON.stringify(participant.user, null, 2));
-                console.log('participant.user.account:', participant.user.account);
                 handleParticipantPress(participant.user.account);
             }}
             activeOpacity={0.7}

@@ -53,16 +53,6 @@ function AppLayout() {
                         ),
                     }}
                 />
-                <Tabs.Screen
-                    name="calview"
-                    options={{
-                        title: "Calendar View",
-                        headerShown: false,
-                        tabBarIcon: ({ size, color }) => (
-                            <Feather name="calendar" size={size} color={color} />
-                        ),
-                    }}
-                />
             </Tabs>
         </View>
     );

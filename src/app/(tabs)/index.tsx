@@ -36,14 +36,6 @@ const formatDateSection = (date: Date): string => {
   const meetingDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const tomorrowDate = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
-
-  console.log('=== Date Comparison Debug ===');
-  console.log('Meeting date:', meetingDate.toDateString());
-  console.log('Today:', todayDate.toDateString());
-  console.log('Tomorrow:', tomorrowDate.toDateString());
-  console.log('Meeting === Today:', meetingDate.getTime() === todayDate.getTime());
-  console.log('Meeting === Tomorrow:', meetingDate.getTime() === tomorrowDate.getTime());
-
   if (meetingDate.getTime() === todayDate.getTime()) {
     return 'Today';
   } else if (meetingDate.getTime() === tomorrowDate.getTime()) {
@@ -102,7 +94,6 @@ export default function HomeScreen() {
       // Get access token
       const token = await SecureStore.getItemAsync('access_token');
       if (!token) {
-        console.log('No access token found');
         setMeetingsState({ status: "error", error: "Authentication required. Please log in again." });
         return;
       }
@@ -112,10 +103,6 @@ export default function HomeScreen() {
         MeetingRepo.GetMeetings("", token), // Meetings where user is owner
         MeetingRepo.GetMeetingsRequests("", token) // Meetings where user is participant
       ]);
-
-      console.log('Owned meetings response:', JSON.stringify(ownedMeetingsResponse, null, 2));
-      console.log('Participant meetings response:', JSON.stringify(participantMeetingsResponse, null, 2));
-
       const allMeetings: Meetings.Meeting[] = [];
 
       // Process owned meetings
@@ -143,27 +130,6 @@ export default function HomeScreen() {
       // Filter to only show approved meetings (for both owned and participated)
       const approvedMeetings = allMeetings.filter(meeting => meeting.status.toLowerCase() === 'approved');
       const sections = groupMeetingsByDate(approvedMeetings);
-
-      console.log('=== Meeting Debug Info ===');
-      console.log('All meetings:', allMeetings.length);
-      console.log('All meetings details:', allMeetings.map(m => ({
-        id: m.id,
-        title: m.title,
-        status: m.status,
-        start_time: m.start_time,
-        parsed_date: new Date(m.start_time).toDateString(),
-        dateSection: formatDateSection(new Date(m.start_time))
-      })));
-      console.log('Approved meetings:', approvedMeetings.length);
-      console.log('Approved meetings details:', approvedMeetings.map(m => ({
-        id: m.id,
-        title: m.title,
-        start_time: m.start_time,
-        parsed_date: new Date(m.start_time).toDateString(),
-        dateSection: formatDateSection(new Date(m.start_time))
-      })));
-      console.log('Generated sections:', sections.map(s => ({ title: s.title, count: s.count })));
-
       setMeetingsState({ status: "success", data: allMeetings, sections });
 
     } catch (error) {

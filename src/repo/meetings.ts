@@ -367,15 +367,6 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                 requestData.meeting.status = "new";
             }
 
-            console.log("=== API Request Debug ===");
-            console.log("URL:", `${host}/${API_ROUTE_DOMAIN}/create`);
-            console.log("Request data:", JSON.stringify(requestData, null, 2));
-            console.log("Headers:", {
-                Authorization: `Bearer ${token}`,
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            });
-
             const req = await fetch(`${host}/api/v1/meeting/create`, {
                 method: "POST",
                 headers: {
@@ -385,12 +376,6 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                 },
                 body: JSON.stringify(requestData),
             });
-
-            console.log("=== API Response Debug ===");
-            console.log("Status:", req.status);
-            console.log("Status Text:", req.statusText);
-            console.log("OK:", req.ok);
-
             const errorMessages: Record<string, string> = {
                 "PARTICIPANTS_UNAVAILABLE": "Participants are unavailable",
             };
@@ -399,10 +384,8 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
             let response;
             try {
                 response = await req.json();
-                console.log("Response:", response);
             } catch (jsonError) {
                 console.error("Failed to parse JSON response:", jsonError);
-                console.log("Raw response text:", await req.text());
                 return {
                     success: false,
                     errors: [{ field: "general", error: "Invalid server response" }],
@@ -411,7 +394,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
 
             if (!req.ok) {
                 let processedErrors: Meetings.FieldError[] = [{ field: "general", error: "Failed to create meeting" }];
-                
+
                 // Handle different API response formats
                 if (response.errors && Array.isArray(response.errors)) {
                     // Standard array format
@@ -441,7 +424,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                         return { field, error: friendlyMessage };
                     });
                 }
-                
+
                 return {
                     success: false,
                     errors: processedErrors,

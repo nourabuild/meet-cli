@@ -3,13 +3,35 @@ import { CalendarRepository } from "./repository";
 
 
 export namespace Calendars {
-    export type Calendar = {
-        id: string;
-        name: string;
-        color: string;
-        created_at: string;
-        updated_at: string;
+
+    export type TimeInterval = {
+        start_time: string;
+        end_time: string;
+    };
+
+    type Entries = { entries: Availability };
+
+    export type Availability = {
+        id?: string;
+        day_of_week: number;
+        start_time: string;
+        end_time: string;
+        created_at?: string;
+        updated_at?: string;
+        entries?: Entries[];
     }
+
+    type ExceptionEntries = { entries: Exceptions };
+
+    export type Exceptions = {
+        id?: string;
+        date: string;
+        start_time: string | null;
+        end_time: string | null;
+        is_available: boolean;
+        exceptions?: ExceptionEntries[];
+    }
+
 
     export type CalendarEntry = {
         id: string;
@@ -20,14 +42,7 @@ export namespace Calendars {
         is_available: boolean;
     }
 
-    export type ExceptionDate = {
-        id: string;
-        calendar_id: string;
-        exception_date: string;
-        start_time: string;
-        end_time: string;
-        is_available: boolean;
-    }
+
 
     export type OnboardingStatus = {
         completed: boolean;
@@ -41,8 +56,6 @@ export namespace Calendars {
 
     export type OnboardingResponse = OnboardingSuccessResponse | FailureResponse;
 
-
-
     type FieldError = {
         field: string;
         error: string;
@@ -50,7 +63,7 @@ export namespace Calendars {
 
     type SuccessResponse = {
         success: true;
-        data: Calendar;
+        data: Availability | Exceptions;
     };
 
     type FailureResponse = {
@@ -66,7 +79,7 @@ const API_ROUTE_DOMAIN = "api/v1/calendar";
 const NewCalendarRepository = (host: string): CalendarRepository => {
     return {
         GetUserWeeklyAvailability: async (token: string) => {
-            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/entries/list`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/availability`, {
                 method: "GET",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -157,7 +170,7 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                 data: response,
             } satisfies Calendars.OnboardingResponse;
         },
-        AddUserWeeklyAvailability: async (dayOfWeek: number, intervals: any[], token: string) => {
+        AddUserWeeklyAvailability: async (dayOfWeek: number, intervals: Calendars.TimeInterval[], token: string) => {
             const data = {
                 day_of_week: dayOfWeek,
                 intervals: intervals
@@ -196,14 +209,6 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
             const isAvailableValue = formData.get("is_available") as string;
             const isFullDayValue = formData.get("is_full_day") as string;
 
-            console.log('AddUserExceptionDate - FormData values:', {
-                exception_date: exceptionDateValue,
-                start_time: startTimeValue,
-                end_time: endTimeValue,
-                is_available: isAvailableValue,
-                is_full_day: isFullDayValue
-            });
-
             if (!exceptionDateValue) {
                 errors.push({ field: "exception_date", error: "Exception date is required" });
             } else {
@@ -231,9 +236,6 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                     errors: errors,
                 } satisfies Calendars.Response;
             }
-
-            console.log('AddUserExceptionDate - Sending data to API:', data);
-            
             const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/exceptions`, {
                 method: "POST",
                 headers: {
@@ -244,14 +246,7 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                 body: JSON.stringify(data),
             });
             const response = await req.json();
-            
-            console.log('AddUserExceptionDate - API Response:', { 
-                status: req.status, 
-                statusText: req.statusText, 
-                ok: req.ok,
-                response: response 
-            });
-            
+
             if (!req.ok) {
                 return {
                     success: false,

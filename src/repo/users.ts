@@ -108,7 +108,7 @@ const NewUserRepository = (host: string): UserRepository => {
             } satisfies Users.Response;
         },
         WhoAmI: async (token: string) => {
-            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/me/verify`, {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/whoami`, {
                 method: "GET",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -158,7 +158,7 @@ const NewUserRepository = (host: string): UserRepository => {
             } satisfies Users.Response;
         },
         SearchUsers: async (query: string, token: string, signal: AbortSignal) => {
-            const searchUrl = `${host}/${API_ROUTE_DOMAIN}/find?q=${encodeURIComponent(query)}`;
+            const searchUrl = `${host}/${API_ROUTE_DOMAIN}/search?q=${encodeURIComponent(query)}`;
 
             const req = await fetch(searchUrl, {
                 method: "GET",
