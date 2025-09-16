@@ -76,7 +76,7 @@ function formReducer(state: FormFields, action: { name: keyof FormFields; value:
 // -------------------------------
 
 export default function NewMeeting() {
-    const currentUser = useReduxSelector((state) => state.user);
+    const currentUser = useReduxSelector((state) => state.user?.user);
 
     const textColor = useThemeColor({}, 'text');
     const cardColor = useThemeColor({}, 'card');

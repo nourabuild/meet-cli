@@ -17,14 +17,24 @@ export interface UserRepository {
     UpdateUser: (formData: FormData, token: string) => Promise<Users.Response>;
 };
 
+// calendar_service.create_exception(
+//     current_user.id,
+//     exception_data.exception_date,
+//     exception_data.recurrence_type,
+//     exception_data.interval,
+//     exception_data.is_full_day,
+//     exception_data.is_available,
+// )
+
 export interface CalendarRepository {
     GetUserWeeklyAvailability: (token: string) => Promise<Calendars.Response>;
     GetUserExceptionDates: (token: string) => Promise<Calendars.Response>;
     GetOnboardingStatus: (token: string) => Promise<Calendars.OnboardingResponse>;
     AddUserWeeklyAvailability: (dayOfWeek: number, intervals: Calendars.TimeInterval[], token: string) => Promise<Calendars.Response>;
-    AddUserExceptionDate: (formData: FormData, token: string) => Promise<Calendars.Response>;
-    AddUserAvailability: (formData: FormData, token: string) => Promise<Calendars.Response>;
-    DeleteUserWeeklyAvailabilityById: (calendarId: string, token: string) => Promise<Calendars.Response>;
+    AddUserExceptionDate: (exception_date: string, recurrence_type: string, interval: Calendars.TimeInterval, is_full_day: boolean, is_available: boolean, token: string) => Promise<Calendars.Response>;
+    // DO NOT IMPLEMENT DELETE FUNCTION, API DOES NOT HAVE IT
+    // DeleteUserWeeklyAvailabilityById: (calendarId: string, token: string) => Promise<Calendars.Response>;
+    DeleteUserExceptionDate: (id: string, token: string) => Promise<Calendars.Response>;
 }
 
 export interface FollowRepository {

@@ -41,3 +41,6 @@ flash:
 
 pro:
 	gemini --model gemini-2.5-pro
+
+upgrade-modules:
+	npx npm-check-updates -u

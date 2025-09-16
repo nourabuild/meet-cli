@@ -1,7 +1,7 @@
 import { Text, View, StyleSheet, Image, ScrollView, TouchableOpacity, Alert } from "react-native";
 import { router } from "expo-router";
 import * as SecureStore from 'expo-secure-store';
-import { useEffect, useReducer, useRef } from 'react';
+import { useEffect, useReducer } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import { useCameraPermissions } from 'expo-camera';
 
@@ -61,7 +61,8 @@ export default function ProfileScreen() {
     const textColor = useThemeColor({}, 'text');
     const cardColor = useThemeColor({}, 'card');
 
-    const currentUser = useReduxSelector((state) => state.user);
+    const currentUser = useReduxSelector((state) => state.user?.user);
+
     const [permission, requestPermission] = useCameraPermissions();
 
     // State management using reducers (same pattern as login/register)
@@ -71,81 +72,83 @@ export default function ProfileScreen() {
         { status: "idle" }
     );
 
-    // Ref to track if we've already fetched follow data to prevent re-fetches
-    const hasLoadedFollowData = useRef<boolean>(false);
 
     useEffect(() => {
-        const fetchFollowData = async () => {
-            if (!currentUser?.account || hasLoadedFollowData.current) return;
+        if (!currentUser?.account) return;
 
-            hasLoadedFollowData.current = true;
-
+        const getFollowing = async () => {
             try {
                 setProfileState({ status: "loading" });
-
-                // Get access token
-                const token = await SecureStore.getItemAsync('access_token');
+                const token = await SecureStore.getItemAsync("access_token");
                 if (!token) {
                     setProfileState({ status: "error", error: "No access token found" });
                     return;
                 }
 
-                // Fetch following count
-                const followingResponse = await FollowRepo.GetFollowing(currentUser.account, token);
-                let followingCount = 0;
-                if (followingResponse.success) {
-                    // Check if response has count property, otherwise use data array length
-                    if (typeof followingResponse.data === 'object' && followingResponse.data && 'count' in followingResponse.data) {
-                        const count = (followingResponse.data as any).count;
-                        if (typeof count === 'number') {
-                            followingCount = count;
-                        }
-                    } else if (Array.isArray(followingResponse.data)) {
-                        followingCount = followingResponse.data.length;
-                    } else {
-                        followingCount = 1;
-                    }
+                const response = await FollowRepo.GetFollowing(currentUser.account, token);
+                if (response.success) {
+                    const followingCount = Array.isArray(response.data)
+                        ? response.data.length
+                        : (response.data as any).data?.length || 0;
+                    dispatchProfileData({
+                        type: "SET_FOLLOWING",
+                        data: { followingCount },
+                    });
+                    setProfileState({
+                        status: "success",
+                        data: { followersCount: profileData.followersCount, followingCount },
+                    });
+                } else {
+                    setProfileState({ status: "error", error: response.errors[0]?.error || "Unknown error" });
                 }
-
-                // Fetch followers count
-                const followersResponse = await FollowRepo.GetFollowers(currentUser.account, token);
-                let followersCount = 0;
-                if (followersResponse.success) {
-                    // Check if response has count property, otherwise use data array length
-                    if (typeof followersResponse.data === 'object' && followersResponse.data && 'count' in followersResponse.data) {
-                        const count = (followersResponse.data as any).count;
-                        if (typeof count === 'number') {
-                            followersCount = count;
-                        }
-                    } else if (Array.isArray(followersResponse.data)) {
-                        followersCount = followersResponse.data.length;
-                    } else {
-                        followersCount = 1;
-                    }
-                }
-
-                // Update state with both counts
-                dispatchProfileData({
-                    type: 'SET_ALL',
-                    data: { followersCount, followingCount }
-                });
-
-                setProfileState({
-                    status: "success",
-                    data: { followersCount, followingCount }
-                });
-
             } catch (error) {
-                console.error('Error fetching follow data:', error);
+                console.error("Error fetching following data:", error);
                 setProfileState({
                     status: "error",
-                    error: error instanceof Error ? error.message : "Failed to load profile data"
+                    error: error instanceof Error ? error.message : "Failed to load following data",
                 });
             }
         };
 
-        fetchFollowData();
-    }, [currentUser?.account]);
+        const getFollowers = async () => {
+            try {
+                setProfileState({ status: "loading" });
+                const token = await SecureStore.getItemAsync("access_token");
+                if (!token) {
+                    setProfileState({ status: "error", error: "No access token found" });
+                    return;
+                }
+
+                const response = await FollowRepo.GetFollowers(currentUser.account, token);
+                if (response.success) {
+                    const followersCount = Array.isArray(response.data)
+                        ? response.data.length
+                        : (response.data as any).data?.length || 0;
+                    dispatchProfileData({
+                        type: "SET_FOLLOWERS",
+                        data: { followersCount },
+                    });
+                    setProfileState({
+                        status: "success",
+                        data: { followersCount, followingCount: profileData.followingCount },
+                    });
+                } else {
+                    setProfileState({ status: "error", error: response.errors[0]?.error || "Unknown error" });
+                }
+            } catch (error) {
+                console.error("Error fetching followers data:", error);
+                setProfileState({
+                    status: "error",
+                    error: error instanceof Error ? error.message : "Failed to load followers data",
+                });
+            }
+        };
+
+        getFollowers();
+        getFollowing();
+    }, [currentUser?.account, profileData.followersCount, profileData.followingCount]);
+
+
 
     const getInitials = (name: string) => {
         return name
