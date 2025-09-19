@@ -142,7 +142,10 @@ function RegisterScreen() {
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
             >
                 <ScrollView
+                    style={styles.scrollView}
                     contentContainerStyle={styles.scrollContainer}
+                    keyboardDismissMode="on-drag"
+                    keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                 >
                     <View style={styles.formContainer}>
@@ -301,6 +304,9 @@ const styles = StyleSheet.create({
     },
     scrollContainer: {
         flexGrow: 1,
+    },
+    scrollView: {
+        flex: 1,
     },
     formContainer: {
         flex: 1,
