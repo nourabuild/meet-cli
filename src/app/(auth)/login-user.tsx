@@ -7,6 +7,7 @@ import {
     KeyboardAvoidingView,
     Platform,
     TouchableOpacity,
+    ScrollView,
 } from "react-native";
 import { Link } from "expo-router";
 import Feather from '@expo/vector-icons/Feather';
@@ -97,78 +98,85 @@ function LoginScreen() {
                 style={styles.keyboardContainer}
                 behavior={Platform.OS === "ios" ? "padding" : undefined}
             >
-                <View style={styles.formContainer}>
-                    <NouraImage
-                        source={require("../../../assets/icon.png")}
-                        style={styles.logo}
-                        containerStyle={styles.logoContainer}
-                        resizeMode="contain"
-                        borderRadius={0}
-                        showLoadingIndicator={false}
-                    />
-
-                    <Text style={[styles.title, { color: textColor }]}>Welcome Back</Text>
-                    <Text style={[styles.subtitle, { color: textColor }]}>Sign in to your account</Text>
-
-                    <View style={styles.inputContainer}>
-                        <Text style={[styles.label, { color: textColor }]}>Email</Text>
-                        <TextInput
-                            style={[styles.input, { backgroundColor: cardColor, color: textColor }]}
-                            value={formState.email}
-                            onChangeText={(text) => handleChange("email", text)}
-                            autoCapitalize="none"
-                            keyboardType="email-address"
-                            autoComplete="email"
+                <ScrollView
+                    style={styles.scrollView}
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardDismissMode="on-drag"
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <View style={styles.formContainer}>
+                        <NouraImage
+                            source={require("../../../assets/icon.png")}
+                            style={styles.logo}
+                            containerStyle={styles.logoContainer}
+                            resizeMode="contain"
+                            borderRadius={0}
+                            showLoadingIndicator={false}
                         />
-                    </View>
 
-                    <View style={styles.inputContainer}>
-                        <Text style={[styles.label, { color: textColor }]}>Password</Text>
-                        <View style={[styles.passwordInputContainer, { backgroundColor: cardColor }]}>
+                        <Text style={[styles.title, { color: textColor }]}>Welcome Back</Text>
+                        <Text style={[styles.subtitle, { color: textColor }]}>Sign in to your account</Text>
+
+                        <View style={styles.inputContainer}>
+                            <Text style={[styles.label, { color: textColor }]}>Email</Text>
                             <TextInput
-                                style={[styles.passwordInput, { color: textColor }]}
-                                secureTextEntry={!visible}
-                                value={formState.password}
-                                onChangeText={(text) => handleChange("password", text)}
-                                autoComplete="password"
+                                style={[styles.input, { backgroundColor: cardColor, color: textColor }]}
+                                value={formState.email}
+                                onChangeText={(text) => handleChange("email", text)}
+                                autoCapitalize="none"
+                                keyboardType="email-address"
+                                autoComplete="email"
                             />
-                            <TouchableOpacity
-                                style={styles.eyeIcon}
-                                onPress={toggleVisibility}
-                                activeOpacity={0.7}
-                            >
-                                <Feather
-                                    name={visible ? "eye-off" : "eye"}
-                                    size={20}
-                                    color={theme.colorGrey}
+                        </View>
+
+                        <View style={styles.inputContainer}>
+                            <Text style={[styles.label, { color: textColor }]}>Password</Text>
+                            <View style={[styles.passwordInputContainer, { backgroundColor: cardColor }]}>
+                                <TextInput
+                                    style={[styles.passwordInput, { color: textColor }]}
+                                    secureTextEntry={!visible}
+                                    value={formState.password}
+                                    onChangeText={(text) => handleChange("password", text)}
+                                    autoComplete="password"
                                 />
-                            </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.eyeIcon}
+                                    onPress={toggleVisibility}
+                                    activeOpacity={0.7}
+                                >
+                                    <Feather
+                                        name={visible ? "eye-off" : "eye"}
+                                        size={20}
+                                        color={theme.colorGrey}
+                                    />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {loginState.status === "error" && (
+                            <View style={styles.errorContainer}>
+                                <Text style={styles.errorText}>{loginState.error}</Text>
+                            </View>
+                        )}
+
+                        <Text style={[styles.forgotPassword, { color: textColor }]}>Forgot Password?</Text>
+
+                        <NouraButton
+                            title={loginState.status === "loading" ? "Signing In..." : "Sign In"}
+                            onPress={handleLogin}
+                            loading={loginState.status === "loading"}
+                            disabled={loginState.status === "loading"}
+                            style={styles.button}
+                        />
+
+                        <View style={styles.signupContainer}>
+                            <Text style={[styles.signupText, { color: textColor }]}>Don&apos;t have an account? </Text>
+                            <Link href="/register-user" style={styles.signupLink}>
+                                <Text style={styles.signupLinkText}>Sign Up</Text>
+                            </Link>
                         </View>
                     </View>
-
-                    {loginState.status === "error" && (
-                        <View style={styles.errorContainer}>
-                            <Text style={styles.errorText}>{loginState.error}</Text>
-                        </View>
-                    )}
-
-                    <Text style={[styles.forgotPassword, { color: textColor }]}>Forgot Password?</Text>
-
-                    <NouraButton
-                        title={loginState.status === "loading" ? "Signing In..." : "Sign In"}
-                        onPress={handleLogin}
-                        loading={loginState.status === "loading"}
-                        disabled={loginState.status === "loading"}
-                        style={styles.button}
-                    />
-
-                    <View style={styles.signupContainer}>
-                        <Text style={[styles.signupText, { color: textColor }]}>Don&apos;t have an account? </Text>
-                        <Link href="/register-user" style={styles.signupLink}>
-                            <Text style={styles.signupLinkText}>Sign Up</Text>
-                        </Link>
-                    </View>
-                </View>
+                </ScrollView>
             </KeyboardAvoidingView>
         </SafeAreaContainer>
     );
@@ -186,6 +194,12 @@ const styles = StyleSheet.create({
     },
     keyboardContainer: {
         flex: 1,
+    },
+    scrollView: {
+        flex: 1,
+    },
+    scrollContent: {
+        flexGrow: 1,
     },
     formContainer: {
         flex: 1,
