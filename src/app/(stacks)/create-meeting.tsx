@@ -379,7 +379,11 @@ export default function NewMeeting() {
             </View>
 
             {/* Form Content */}
-            <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                style={styles.scrollContainer}
+                contentContainerStyle={styles.scrollContent}
+                keyboardDismissMode="on-drag"
+                showsVerticalScrollIndicator={false}>
                 <View style={styles.formContainer}>
                     {/* Participants Section */}
                     <View style={styles.section}>
@@ -677,6 +681,9 @@ const styles = StyleSheet.create({
     },
     scrollContainer: {
         flex: 1,
+    },
+    scrollContent: {
+        paddingBottom: 32,
     },
     formContainer: {
         padding: 24,

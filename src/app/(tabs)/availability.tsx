@@ -518,7 +518,7 @@ export default function AvailabilityScreen() {
                 contentContainerStyle={{ paddingBottom: 40 }}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="always"
-                keyboardDismissMode="interactive"
+                keyboardDismissMode="on-drag"
             >
 
                 {/* Availability Section */}

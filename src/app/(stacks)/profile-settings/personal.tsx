@@ -215,7 +215,10 @@ export default function AccountSettings() {
                     <View style={styles.placeholder} />
                 </View>
 
-                <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.contentContainer}>
+                <ScrollView
+                    style={styles.scrollContainer}
+                    contentContainerStyle={styles.contentContainer}
+                    keyboardDismissMode="on-drag">
 
                     <View>
                         <Text style={[styles.sectionTitle, { color: textColor }]}>Basic Information</Text>
