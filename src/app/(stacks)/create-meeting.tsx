@@ -8,7 +8,6 @@ import { theme } from '@/styles/theme';
 import { NouraButton, NouraTimePicker } from '@/lib/components';
 import { Users } from '@/repo/users';
 import { UserRepo, MeetingRepo } from '@/repo';
-import { Meetings } from '@/repo/meetings';
 import { useReduxSelector } from '@/lib/hooks';
 import SafeAreaContainer from '@/lib/utils/safe-area-container';
 import { useThemeColor } from '@/lib/hooks/theme/useThemeColor';
@@ -25,29 +24,29 @@ type CreateMeetingState =
 
 type FormFields = {
     title: string;
-    meetingType: string;
-    assignedTo: string;
+    type: string;
+    start_time: string;
     location: string;
     participants: Users.User[];
 };
 
-type FieldValidationState = {
-    title: boolean;
-    meetingType: boolean;
-    location: boolean;
-    date: boolean;
-    participants: boolean;
-};
+type SearchState =
+    | { status: "idle"; query: string }
+    | { status: "loading"; query: string }
+    | { status: "error"; error: string; query: string }
+    | { status: "success"; data: Users.User[]; query: string };
 
 const initialFormState: FormFields = {
     title: "",
-    meetingType: "",
-    assignedTo: "",
+    type: "",
+    start_time: "",
     location: "",
     participants: [],
 };
 
-function formReducer(state: FormFields, action: { name: keyof FormFields; value: string } | { type: 'SET_PARTICIPANTS'; participants: Users.User[] } | { type: 'ADD_PARTICIPANT'; participant: Users.User } | { type: 'REMOVE_PARTICIPANT'; participantId: string }) {
+const initialSearchState: SearchState = { status: "idle", query: "" };
+
+function formReducer(state: FormFields, action: { name: keyof FormFields; value: string } | { type: 'SET_PARTICIPANTS'; participants: Users.User[] } | { type: 'ADD_PARTICIPANT'; participant: Users.User } | { type: 'REMOVE_PARTICIPANT'; participantId: string; currentUserId?: string }) {
     if ('type' in action) {
         switch (action.type) {
             case 'SET_PARTICIPANTS':
@@ -59,6 +58,10 @@ function formReducer(state: FormFields, action: { name: keyof FormFields; value:
                 }
                 return state;
             case 'REMOVE_PARTICIPANT':
+                // Prevent removing the current user (meeting owner)
+                if (action.currentUserId && action.participantId === action.currentUserId) {
+                    return state;
+                }
                 return { ...state, participants: state.participants.filter(p => p.id !== action.participantId) };
             default:
                 return state;
@@ -71,6 +74,23 @@ function formReducer(state: FormFields, action: { name: keyof FormFields; value:
     };
 }
 
+function searchReducer(state: SearchState, action: { type: 'SET_QUERY'; query: string } | { type: 'START_SEARCH' } | { type: 'SEARCH_SUCCESS'; data: Users.User[] } | { type: 'SEARCH_ERROR'; error: string } | { type: 'RESET_SEARCH' }): SearchState {
+    switch (action.type) {
+        case 'SET_QUERY':
+            return { ...state, query: action.query };
+        case 'START_SEARCH':
+            return { status: "loading", query: state.query };
+        case 'SEARCH_SUCCESS':
+            return { status: "success", data: action.data, query: state.query };
+        case 'SEARCH_ERROR':
+            return { status: "error", error: action.error, query: state.query };
+        case 'RESET_SEARCH':
+            return { status: "idle", query: "" };
+        default:
+            return state;
+    }
+}
+
 // -------------------------------
 // Component
 // -------------------------------
@@ -81,582 +101,384 @@ export default function NewMeeting() {
     const textColor = useThemeColor({}, 'text');
     const cardColor = useThemeColor({}, 'card');
 
-    // Log user's locale information for debugging
-    React.useEffect(() => {
-        const browserLocale = navigator.language || 'en-US';
-        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-    }, []);
-
     const [formState, dispatch] = useReducer(formReducer, {
         ...initialFormState,
         participants: currentUser ? [currentUser] : []
     });
+    const [searchState, searchDispatch] = useReducer(searchReducer, initialSearchState);
     const [createMeetingState, setCreateMeetingState] = useState<CreateMeetingState>({ status: "idle" });
-    const [validationErrors, setValidationErrors] = useState<Meetings.ValidationErrors>({});
-    const [touchedFields, setTouchedFields] = useState<FieldValidationState>({
-        title: false,
-        meetingType: false,
-        location: false,
-        date: false,
-        participants: false,
-    });
 
-    // Initialize date with proper timezone consideration
-    const [date, setDate] = useState(() => {
-        const now = new Date();
-        // Round to next 30-minute interval for better UX
-        const minutes = now.getMinutes();
-        const roundedMinutes = Math.ceil(minutes / 30) * 30;
-        now.setMinutes(roundedMinutes, 0, 0); // Set seconds and milliseconds to 0
-        return now;
-    });
-    const [showDatePicker, setShowDatePicker] = useState(false);
-    const [tempDate, setTempDate] = useState(() => {
-        const now = new Date();
-        const minutes = now.getMinutes();
-        const roundedMinutes = Math.ceil(minutes / 30) * 30;
-        now.setMinutes(roundedMinutes, 0, 0);
-        return now;
-    });
-    const [searchQuery, setSearchQuery] = useState('');
-    const [searchResults, setSearchResults] = useState<Users.User[]>([]);
-    const [isSearching, setIsSearching] = useState(false);
-
-    const handleFieldBlur = (name: keyof FieldValidationState, value: string) => {
-        setTouchedFields(prev => ({ ...prev, [name]: true }));
-
-        let error: string | undefined;
-        if (name === 'title') error = Meetings.validateTitle(value);
-        else if (name === 'meetingType') error = Meetings.validateType(value);
-        else if (name === 'location') error = Meetings.validateLocation(value);
-
-        setValidationErrors(prev => ({
-            ...prev,
-            [name === 'meetingType' ? 'type' : name]: error
-        }));
-    };
-
-    const handleChange = (name: keyof FormFields, value: string) => {
-        dispatch({ name, value });
-
-        // Real-time validation for touched fields
-        if (touchedFields[name as keyof FieldValidationState]) {
-            let error: string | undefined;
-            if (name === 'title') error = Meetings.validateTitle(value);
-            else if (name === 'meetingType') error = Meetings.validateType(value);
-            else if (name === 'location') error = Meetings.validateLocation(value);
-
-            setValidationErrors(prev => ({
-                ...prev,
-                [name === 'meetingType' ? 'type' : name]: error
-            }));
-        }
-    };
-
-    const validateAllFields = (): boolean => {
-        const validationResult = Meetings.validateMeetingForm({
-            title: formState.title,
-            type: formState.meetingType,
-            location: formState.location,
-            date: date,
-            participants: formState.participants,
-            currentUserId: currentUser?.id,
-        });
-
-        setValidationErrors(validationResult);
-        setTouchedFields({
-            title: true,
-            meetingType: true,
-            location: true,
-            date: true,
-            participants: true,
-        });
-
-        return !Meetings.hasValidationErrors(validationResult);
-    };
-
-    const handleClose = () => {
-        router.back();
-    };
-
-    const onDateChange = (event: any, selectedDate?: Date) => {
-        if (selectedDate) {
-            setTempDate(selectedDate);
-        }
-    };
-
-    const handleDatePickerDone = () => {
-        setDate(tempDate);
-        setShowDatePicker(false);
-
-        // Validate date if field has been touched
-        if (touchedFields.date) {
-            const error = Meetings.validateDate(tempDate);
-            setValidationErrors(prev => ({
-                ...prev,
-                date: error
-            }));
-        }
-    };
-
-    const handleDatePickerCancel = () => {
-        setTempDate(date); // Reset to original date
-        setShowDatePicker(false);
-    };
-
-    const openDatePicker = () => {
-        setTempDate(date); // Initialize temp date with current date
-        setShowDatePicker(true);
-
-        // Mark date field as touched when user interacts with it
-        setTouchedFields(prev => ({ ...prev, date: true }));
-    };
-
-    const formatDate = (date: Date) => {
-        // Get the user's locale automatically from the browser/device
-        const locale = Intl.DateTimeFormat().resolvedOptions().locale || 'en-US';
-
-        // Format date and time according to user's locale preferences
-        const dateOptions: Intl.DateTimeFormatOptions = {
-            weekday: 'short',
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-        };
-
-        const timeOptions: Intl.DateTimeFormatOptions = {
-            hour: '2-digit',
-            minute: '2-digit',
-            // Automatically use 12h or 24h format based on locale
-        };
-
-        // Format date and time separately for better control
-        const formattedDate = date.toLocaleDateString(locale, dateOptions);
-        const formattedTime = date.toLocaleTimeString(locale, timeOptions);
-
-        return `${formattedDate}, ${formattedTime}`;
-    };
-
-    // Helper function to get timezone information
-    const getTimezoneInfo = () => {
-        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const locale = Intl.DateTimeFormat().resolvedOptions().locale || 'en-US';
-
-        return {
-            locale,
-            timeZone,
-            region: locale.split('-')[1] || 'US',
-        };
-    };
-
-    // Helper function to format date for backend (always ISO)
-    const formatDateForBackend = (date: Date) => {
-        // Always send ISO string to backend for consistent handling
-        return date.toISOString();
-    };
-
-    const handleCreateMeeting = async () => {
-        // Validate all fields before submission
-        if (!validateAllFields()) {
-            setCreateMeetingState({ status: "error", error: "Please fix the errors above before submitting" });
-            return;
-        }
-
-        setCreateMeetingState({ status: "loading" });
-
-        const { title, meetingType, assignedTo, location } = formState;
-
-        try {
-            const token = await SecureStore.getItemAsync('access_token');
-            if (!token) {
-                setCreateMeetingState({ status: "error", error: "Authentication required. Please log in again." });
-                return;
-            }
-            // Create FormData for the meeting
-            const formData = new FormData();
-            formData.append('title', title.trim());
-            formData.append('type', meetingType.trim() || 'Meeting');
-            formData.append('start_time', formatDateForBackend(date));
-            formData.append('location', location.trim() || 'TBD');
-            formData.append('location_url', '');
-
-            if (assignedTo.trim()) {
-                formData.append('assigned_to', assignedTo.trim());
-            }
-
-            // Add participant user IDs (excluding current user as they're automatically added by backend)
-            const participantIds = formState.participants
-                .filter((p: Users.User) => p.id !== currentUser?.id)
-                .map((p: Users.User) => p.id);
-            participantIds.forEach((participantId: string, index: number) => {
-                formData.append(`participants[${index}]`, participantId);
-            });
-            const result = await MeetingRepo.CreateMeetingWithParticipants(formData, token);
-            if (!result.success) {
-                console.error("Meeting creation failed:", result.errors);
-
-                let errorMessage = "Failed to create meeting";
-                if (Array.isArray(result.errors)) {
-                    errorMessage = result.errors.map(err => `${err.field}: ${err.error}`).join(", ");
-                } else if (typeof result.errors === "string") {
-                    errorMessage = result.errors;
-                }
-
-                setCreateMeetingState({
-                    status: "error",
-                    error: errorMessage,
-                });
-                return;
-            }
-
-            setCreateMeetingState({ status: "success", data: result.data });
-
-            // Navigate back after successful creation with a shorter delay
-            setTimeout(() => {
-                router.back();
-            }, 1000);
-        } catch (error) {
-            console.error("Create meeting error:", error);
-            setCreateMeetingState({
-                status: "error",
-                error:
-                    error instanceof Error
-                        ? error.message
-                        : "Network error. Please check your connection and try again.",
-            });
-        }
-    };
+    const [showTimePicker, setShowTimePicker] = useState(false);
+    const [tempDateTime, setTempDateTime] = useState<Date | null>(null);
 
     const handleSearchUsers = async (query: string) => {
-        if (!query.trim()) {
-            setSearchResults([]);
+        searchDispatch({ type: 'SET_QUERY', query });
+
+        if (query.trim().length === 0) {
+            searchDispatch({ type: 'RESET_SEARCH' });
             return;
         }
+
+        searchDispatch({ type: 'START_SEARCH' });
 
         try {
             const token = await SecureStore.getItemAsync('access_token');
             if (!token) {
                 console.error('No auth token available');
+                searchDispatch({ type: 'SEARCH_ERROR', error: 'No authentication token available' });
                 return;
             }
 
-            setIsSearching(true);
-
             const controller = new AbortController();
-            const searchResponse = await UserRepo.SearchUsers(query, token, controller.signal);
+            const response = await UserRepo.SearchUsers(query, token, controller.signal);
 
-            if (searchResponse.success && searchResponse.data) {
-                // Extract the users array from the response
-                const users = searchResponse.data.data || [];
-                setSearchResults(users);
+            if (response.success) {
+                searchDispatch({ type: 'SEARCH_SUCCESS', data: response.users });
             } else {
-                setSearchResults([]);
+                searchDispatch({ type: 'SEARCH_ERROR', error: response.errors ? 'Search failed' : 'Search failed' });
             }
         } catch (error) {
-            console.error('Error searching users:', error);
-            setSearchResults([]);
-        } finally {
-            setIsSearching(false);
+            searchDispatch({ type: 'SEARCH_ERROR', error: error instanceof Error ? error.message : 'Search failed' });
         }
     };
 
-    const handleAddParticipant = (user: Users.User) => {
-        dispatch({ type: 'ADD_PARTICIPANT', participant: user });
-        setSearchQuery('');
-        setSearchResults([]);
-    };
+
+    const handleCreateMeeting = async () => {
+        setCreateMeetingState({ status: "loading" });
+
+        try {
+            // Debug log the form state
+            console.log('Form state before submission:', formState);
+            console.log('Selected start time:', formState.start_time);
+            console.log('Start time as Date:', new Date(formState.start_time));
+            console.log('Current timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
+            console.log('Local time string:', new Date(formState.start_time).toLocaleString());
+            console.log('UTC time string:', new Date(formState.start_time).toISOString());
+            console.log('Day of week:', new Date(formState.start_time).getDay()); // 0=Sunday, 1=Monday, etc.
+            console.log('Local hour:', new Date(formState.start_time).getHours());
+            console.log('UTC hour:', new Date(formState.start_time).getUTCHours());
+            console.log('Current participants:', formState.participants.map(p => ({ id: p.id, name: p.name, email: p.email })));
+
+            const formData = new FormData();
+            formData.append('title', formState.title);
+            formData.append('type', formState.type);
+            formData.append('start_time', formState.start_time);
+            formData.append('location', formState.location);
+            formData.append('location_url', ''); // Add empty location_url as fallback
+            // Filter out current user from participants - they are automatically the meeting owner
+            const otherParticipants = formState.participants.filter(p => currentUser && p.id !== currentUser.id);
+            formData.append('participants', JSON.stringify(otherParticipants.map(p => p.id)));
+
+            // Debug log what we're sending
+            console.log('FormData contents:');
+            console.log('title:', formData.get('title'));
+            console.log('type:', formData.get('type'));
+            console.log('start_time:', formData.get('start_time'));
+            console.log('location:', formData.get('location'));
+            console.log('participants:', formData.get('participants'));
+
+            const token = await SecureStore.getItemAsync('access_token');
+            if (!token) {
+                setCreateMeetingState({ status: "error", error: "User not authenticated. Please log in again." });
+                return;
+            }
+
+            const response = await MeetingRepo.CreateMeetingWithParticipants(formData, token);
+
+            // Debug log the API response
+            console.log('API Response:', response);
+
+            if (!response.success) {
+                if (response.errors && Array.isArray(response.errors)) {
+                    // Handle array of field errors from repository
+                    const errorMessages = response.errors
+                        .map((errorObj) => errorObj.error)
+                        .join('\n');
+                    setCreateMeetingState({ status: "error", error: errorMessages });
+                } else if (typeof response.errors === 'string') {
+                    setCreateMeetingState({ status: "error", error: response.errors });
+                } else {
+                    setCreateMeetingState({ status: "error", error: "Failed to create meeting. Please check your input and try again." });
+                }
+                return;
+            }
+
+            setCreateMeetingState({ status: "success", data: response.data });
+        } catch (error) {
+            console.error('Error creating meeting:', error);
+            setCreateMeetingState({
+                status: "error",
+                error: error instanceof Error ? error.message : "Network error. Please check your connection and try again."
+            });
+        }
+    }
 
     return (
         <SafeAreaContainer edges={['bottom']} style={styles.container}>
-            {/* Header with close button */}
+            {/* Header */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={handleClose}>
+                <TouchableOpacity onPress={() => router.back()}>
                     <Feather name="x" size={24} color={textColor} />
                 </TouchableOpacity>
                 <Text style={[styles.title, { color: textColor }]}>New Meeting</Text>
                 <View style={styles.placeholder} />
             </View>
+            {/* Form */}
 
-            {/* Form Content */}
             <ScrollView
                 style={styles.scrollContainer}
                 contentContainerStyle={styles.scrollContent}
                 keyboardDismissMode="on-drag"
                 showsVerticalScrollIndicator={false}>
                 <View style={styles.formContainer}>
+                    {/* Error Display */}
+                    {createMeetingState.status === "error" && (
+                        <View style={styles.errorContainer}>
+                            <Text style={styles.errorText}>{createMeetingState.error}</Text>
+                            {createMeetingState.error.includes("unavailable") && (
+                                <View style={styles.suggestionContainer}>
+                                    <Text style={styles.suggestionText}>💡 Try selecting a different time, or ensure participant availability settings are configured correctly.</Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
+
+                    {/* Success Display */}
+                    {createMeetingState.status === "success" && (
+                        <View style={styles.successContainer}>
+                            <Text style={styles.successText}>Meeting created successfully!</Text>
+                        </View>
+                    )}
+
                     {/* Participants Section */}
                     <View style={styles.section}>
                         <Text style={[styles.sectionHeader, { color: textColor }]}>Participants</Text>
 
                         {/* Search Users */}
                         <View style={styles.searchSection}>
-                            <Text style={[styles.sectionTitle, { color: textColor }]}>Search</Text>
+                            <Text style={[styles.title, { color: textColor }]}>Search</Text>
                             <Text style={styles.placeholderText}>e.g., by name, email, or account</Text>
                             <View style={[styles.searchContainer, { backgroundColor: cardColor }]}>
                                 <Feather name="search" size={20} color={theme.colorGrey} style={styles.searchIcon} />
+
                                 <TextInput
                                     style={[styles.searchInput, { color: textColor }]}
-                                    value={searchQuery}
+                                    value={searchState.query}
                                     onChangeText={(text) => {
-                                        setSearchQuery(text);
                                         handleSearchUsers(text);
                                     }}
                                 />
-                                {searchQuery.length > 0 && !isSearching && (
+                                {searchState.query.length > 0 && searchState.status !== "loading" && (
                                     <TouchableOpacity
                                         style={styles.clearButton}
                                         onPress={() => {
-                                            setSearchQuery('');
-                                            setSearchResults([]);
+                                            searchDispatch({ type: 'RESET_SEARCH' });
                                         }}
                                     >
                                         <Feather name="x" size={18} color={theme.colorGrey} />
                                     </TouchableOpacity>
                                 )}
-                                {isSearching && (
+                                {searchState.status === "loading" && (
                                     <Feather name="loader" size={20} color={theme.colorNouraBlue} style={styles.loadingIcon} />
                                 )}
                             </View>
 
-                            {/* Search Results */}
-                            {searchResults.length > 0 && (
+                            {searchState.status === "success" && searchState.data.length > 0 && (
                                 <ScrollView style={[styles.searchResults, { backgroundColor: cardColor }]} nestedScrollEnabled={true}>
-                                    {searchResults.map((user, index) => {
-                                        const isAlreadyAdded = formState.participants.find((p: Users.User) => p.id === user.id);
-                                        const isLastItem = index === searchResults.length - 1;
-                                        const isSingleItem = searchResults.length === 1;
-                                        return (
-                                            <TouchableOpacity
-                                                key={user.id}
-                                                style={[
-                                                    styles.searchResultItem,
-                                                    !isLastItem && !isSingleItem && styles.searchResultItemWithBorder,
-                                                    isAlreadyAdded && styles.searchResultItemDisabled
-                                                ]}
-                                                onPress={() => handleAddParticipant(user)}
-                                                disabled={!!isAlreadyAdded}
-                                                activeOpacity={0.7}
-                                            >
-                                                {/* Profile Picture Circle */}
-                                                <View style={[
-                                                    styles.profileCircle,
-                                                    isAlreadyAdded && styles.profileCircleDisabled
-                                                ]}>
-                                                    <Text style={[
-                                                        styles.profileInitials,
-                                                        isAlreadyAdded && styles.profileInitialsDisabled
+                                    {searchState.data
+                                        .filter(user => currentUser && user.id !== currentUser.id) // Exclude current user from search results
+                                        .map((user, index, filteredArray) => {
+                                            const isAlreadyAdded = formState.participants.find((p: Users.User) => p.id === user.id);
+                                            const isLastItem = index === filteredArray.length - 1;
+                                            const isSingleItem = filteredArray.length === 1;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={user.id}
+                                                    style={[
+                                                        styles.searchResultItem,
+                                                        !isLastItem && !isSingleItem && styles.searchResultItemWithBorder,
+                                                        isAlreadyAdded && styles.searchResultItemDisabled
+                                                    ]}
+                                                    onPress={() => {
+                                                        if (!isAlreadyAdded) {
+                                                            dispatch({ type: 'ADD_PARTICIPANT', participant: user });
+                                                        }
+                                                    }}
+                                                    disabled={!!isAlreadyAdded}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <View style={[
+                                                        styles.profileCircle,
+                                                        isAlreadyAdded && styles.profileCircleDisabled
                                                     ]}>
-                                                        {user.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
-                                                    </Text>
-                                                </View>
+                                                        <Text style={[
+                                                            styles.profileInitials,
+                                                            isAlreadyAdded && styles.profileInitialsDisabled
+                                                        ]}>
+                                                            {user.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
+                                                        </Text>
+                                                    </View>
 
-                                                <View style={styles.userInfo}>
-                                                    <Text style={[
-                                                        styles.userName,
-                                                        { color: isAlreadyAdded ? theme.colorGrey : textColor },
-                                                        isAlreadyAdded && styles.userNameDisabled
-                                                    ]}>
-                                                        {user.name}
-                                                    </Text>
-                                                    <Text style={[
-                                                        styles.userEmail,
-                                                        isAlreadyAdded && styles.userEmailDisabled
-                                                    ]}>
-                                                        {user.email}
-                                                    </Text>
-                                                </View>
-                                                {isAlreadyAdded ? (
-                                                    <Feather name="check" size={20} color={theme.colorGrey} />
-                                                ) : (
-                                                    <Feather name="plus" size={20} color={theme.colorNouraBlue} />
-                                                )}
-                                            </TouchableOpacity>
-                                        );
-                                    })}
+                                                    <View style={styles.userInfo}>
+                                                        <Text style={[
+                                                            styles.userName,
+                                                            { color: isAlreadyAdded ? theme.colorGrey : textColor },
+                                                            isAlreadyAdded && styles.userNameDisabled
+                                                        ]}>
+                                                            {user.name}
+                                                        </Text>
+                                                        <Text style={[
+                                                            styles.userEmail,
+                                                            isAlreadyAdded && styles.userEmailDisabled
+                                                        ]}>
+                                                            {user.email}
+                                                        </Text>
+                                                    </View>
+                                                    {isAlreadyAdded ? (
+                                                        <Feather name="check" size={20} color={theme.colorGrey} />
+                                                    ) : (
+                                                        <Feather name="plus" size={20} color={theme.colorNouraBlue} />
+                                                    )}
+                                                </TouchableOpacity>
+                                            );
+                                        })}
                                 </ScrollView>
                             )}
-                        </View>
 
-                        {/* Participants List */}
-                        <View>
-                            {/* <Text style={styles.sectionTitle}>Added Participants</Text> */}
+                            {/* Participants List */}
                             <View style={styles.chipContainer}>
-                                {formState.participants.map((participant: Users.User, index: number) => {
-                                    const isCurrentUser = participant.id === currentUser?.id;
+                                {formState.participants.map((participant) => {
+                                    const isCurrentUser = currentUser && participant.id === currentUser.id;
                                     return (
                                         <View
                                             key={participant.id}
-                                            style={[
-                                                styles.participantChip,
-                                                isCurrentUser && styles.disabledChip
-                                            ]}
+                                            style={[styles.participantChip, isCurrentUser && styles.disabledChip]}
                                         >
-                                            <Text style={[
-                                                styles.chipText,
-                                                isCurrentUser && styles.disabledChipText
-                                            ]}>
-                                                {participant.name}
-                                                {isCurrentUser && " (You)"}
+                                            <Text style={[styles.chipText, isCurrentUser && styles.disabledChipText]}>
+                                                {participant.name} {isCurrentUser && "(You)"}
                                             </Text>
                                             {!isCurrentUser && (
                                                 <TouchableOpacity
                                                     style={styles.removeChipButton}
-                                                    onPress={() => {
-                                                        dispatch({ type: 'REMOVE_PARTICIPANT', participantId: participant.id });
-
-                                                        // Validate participants after removal if field has been touched
-                                                        if (touchedFields.participants) {
-                                                            const newParticipants = formState.participants.filter(p => p.id !== participant.id);
-                                                            const error = Meetings.validateParticipants(newParticipants, currentUser?.id);
-                                                            setValidationErrors(prev => ({
-                                                                ...prev,
-                                                                participants: error
-                                                            }));
-                                                        }
-                                                    }}
+                                                    onPress={() => dispatch({
+                                                        type: 'REMOVE_PARTICIPANT',
+                                                        participantId: participant.id,
+                                                        currentUserId: currentUser?.id
+                                                    })}
                                                 >
-                                                    <Feather name="x" size={16} color={theme.colorBlack} />
+                                                    <Feather name="x" size={16} color={theme.colorWhite} />
                                                 </TouchableOpacity>
                                             )}
                                         </View>
                                     );
                                 })}
                             </View>
-                            {validationErrors.participants && touchedFields.participants && (
-                                <Text style={styles.errorText}>{validationErrors.participants}</Text>
-                            )}
                         </View>
                     </View>
+
+
 
                     {/* Meeting Section */}
                     <View style={styles.section}>
-                        <Text style={[styles.sectionHeader, { color: textColor }]}>Details</Text>
+                        <Text style={[styles.sectionHeader, { color: textColor }]}>Meeting Details</Text>
 
-                        {/* Meeting Title */}
                         <View style={styles.inputContainer}>
                             <Text style={[styles.label, { color: textColor }]}>Title</Text>
                             <TextInput
-                                style={[
-                                    styles.input,
-                                    { backgroundColor: cardColor, color: textColor },
-                                    validationErrors.title && touchedFields.title && styles.inputError
-                                ]}
+                                style={[styles.input, { color: textColor, backgroundColor: cardColor }, !formState.title && createMeetingState.status === "error" && styles.inputError]}
+                                placeholder="Enter meeting title"
+                                placeholderTextColor={theme.colorGrey}
                                 value={formState.title}
-                                onChangeText={(text) => handleChange("title", text)}
-                                onBlur={() => handleFieldBlur("title", formState.title)}
+                                onChangeText={(text) => dispatch({ name: 'title', value: text })}
                             />
-                            {validationErrors.title && touchedFields.title && (
-                                <Text style={styles.errorText}>{validationErrors.title}</Text>
-                            )}
                         </View>
 
-                        {/* Meeting Type */}
                         <View style={styles.inputContainer}>
                             <Text style={[styles.label, { color: textColor }]}>Meeting Type</Text>
-                            <Text style={styles.placeholderText}>e.g., All Hands, One on One, Team Meeting, Standup, or Project Meeting</Text>
                             <TextInput
-                                style={[
-                                    styles.input,
-                                    { backgroundColor: cardColor, color: textColor },
-                                    validationErrors.type && touchedFields.meetingType && styles.inputError
-                                ]}
-                                value={formState.meetingType}
-                                onChangeText={(text) => handleChange("meetingType", text)}
-                                onBlur={() => handleFieldBlur("meetingType", formState.meetingType)}
+                                style={[styles.input, { color: textColor, backgroundColor: cardColor }]}
+                                placeholder="e.g., Standup, Planning, Retrospective"
+                                placeholderTextColor={theme.colorGrey}
+                                value={formState.type}
+                                onChangeText={(text) => dispatch({ name: 'type', value: text })}
                             />
-                            {validationErrors.type && touchedFields.meetingType && (
-                                <Text style={styles.errorText}>{validationErrors.type}</Text>
-                            )}
                         </View>
 
-                        {/* Date & Time */}
                         <View style={styles.inputContainer}>
-                            <Text style={[styles.label, { color: textColor }]}>Date & Time</Text>
-
-                            <View style={[styles.dateButton, { backgroundColor: cardColor }]}>
-                                <Text style={[styles.dateButtonText, { color: textColor }]}>{formatDate(date)}</Text>
-                                <TouchableOpacity
-                                    style={styles.calendarButton}
-                                    onPress={openDatePicker}
-                                >
-                                    <Feather name="calendar" size={20} color={theme.colorNouraBlue} />
+                            <Text style={[styles.label, { color: textColor }]}>Start Time</Text>
+                            <TouchableOpacity
+                                style={[styles.dateButton, { backgroundColor: cardColor }]}
+                                onPress={() => {
+                                    const currentDate = formState.start_time ? new Date(formState.start_time) : new Date();
+                                    setTempDateTime(currentDate);
+                                    setShowTimePicker(true);
+                                }}
+                            >
+                                <Text style={[styles.dateButtonText, { color: formState.start_time ? textColor : theme.colorGrey }]}>
+                                    {formState.start_time ? new Date(formState.start_time).toLocaleString([], {
+                                        year: 'numeric',
+                                        month: 'numeric',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    }) : "Select meeting start time"}
+                                </Text>
+                                <TouchableOpacity style={styles.calendarButton}>
+                                    <Feather name="calendar" size={20} color={theme.colorGrey} />
                                 </TouchableOpacity>
-                            </View>
+                            </TouchableOpacity>
 
-                            {showDatePicker && (
-                                <NouraTimePicker
-                                    value={tempDate}
-                                    visible={showDatePicker}
-                                    onChange={onDateChange}
-                                    onConfirm={handleDatePickerDone}
-                                    onCancel={handleDatePickerCancel}
-                                    minimumDate={new Date()}
-                                />
-                            )}
-                            {validationErrors.date && touchedFields.date && (
-                                <Text style={styles.errorText}>{validationErrors.date}</Text>
-                            )}
+                            <NouraTimePicker
+                                value={tempDateTime || (formState.start_time ? new Date(formState.start_time) : new Date())}
+                                visible={showTimePicker}
+                                onChange={(event, selectedDate) => {
+                                    if (selectedDate) {
+                                        setTempDateTime(selectedDate);
+                                    }
+                                }}
+                                onConfirm={() => {
+                                    if (tempDateTime) {
+                                        // Remove milliseconds from ISO string to match Postman format
+                                        const isoString = tempDateTime.toISOString().replace(/\.\d{3}Z$/, 'Z');
+                                        dispatch({ name: 'start_time', value: isoString });
+                                    }
+                                    setShowTimePicker(false);
+                                }}
+                                onCancel={() => {
+                                    setTempDateTime(null);
+                                    setShowTimePicker(false);
+                                }}
+                                minimumDate={new Date()}
+                                title="Select Meeting Time"
+                            />
                         </View>
 
-                        {/* Location */}
                         <View style={styles.inputContainer}>
                             <Text style={[styles.label, { color: textColor }]}>Location</Text>
                             <TextInput
-                                style={[
-                                    styles.input,
-                                    { backgroundColor: cardColor, color: textColor },
-                                    validationErrors.location && touchedFields.location && styles.inputError
-                                ]}
+                                style={[styles.input, { color: textColor, backgroundColor: cardColor }]}
+                                placeholder="e.g., Zoom, Office, Google Meet"
+                                placeholderTextColor={theme.colorGrey}
                                 value={formState.location}
-                                onChangeText={(text) => handleChange("location", text)}
-                                onBlur={() => handleFieldBlur("location", formState.location)}
-                            />
-                            {validationErrors.location && touchedFields.location && (
-                                <Text style={styles.errorText}>{validationErrors.location}</Text>
-                            )}
-                        </View>
-
-                        {/* Assigned To */}
-                        <View style={styles.inputContainer}>
-                            <Text style={[styles.label, { color: textColor }]}>Assigned To (User ID)</Text>
-                            <TextInput
-                                style={[styles.input, { backgroundColor: cardColor, color: textColor }]}
-                                value={formState.assignedTo}
-                                onChangeText={(text) => handleChange("assignedTo", text)}
-                                keyboardType="numeric"
+                                onChangeText={(text) => dispatch({ name: 'location', value: text })}
                             />
                         </View>
                     </View>
 
-                    {createMeetingState.status === "error" && (
-                        <View style={styles.errorContainer}>
-                            <Text style={styles.errorText}>{createMeetingState.error}</Text>
-                        </View>
-                    )}
+                </View >
+            </ScrollView >
 
-                    {createMeetingState.status === "success" && (
-                        <View style={styles.successContainer}>
-                            <Text style={styles.successText}>
-                                🎉 Meeting created successfully!
-                            </Text>
-                            <Text style={styles.redirectText}>
-                                Redirecting back...
-                            </Text>
-                        </View>
-                    )}
-
-                    <NouraButton
-                        title={createMeetingState.status === "loading" ? "Creating..." : "Create Meeting"}
-                        onPress={handleCreateMeeting}
-                        loading={createMeetingState.status === "loading"}
-                        disabled={createMeetingState.status === "loading" || createMeetingState.status === "success" || Meetings.hasValidationErrors(validationErrors)}
-                        style={styles.createButton}
-                    />
-                </View>
-            </ScrollView>
-        </SafeAreaContainer>
-    );
+            {/* Fixed Create Button */}
+            <View style={styles.footerContainer}>
+                <NouraButton
+                    title={createMeetingState.status === "loading" ? "Creating..." : "Create Meeting"}
+                    onPress={handleCreateMeeting}
+                    disabled={createMeetingState.status === "loading" || !formState.title || formState.participants.length === 0}
+                    style={styles.createButton}
+                />
+            </View>
+        </SafeAreaContainer >
+    )
 }
 
 const styles = StyleSheet.create({
@@ -689,7 +511,7 @@ const styles = StyleSheet.create({
         padding: 24,
     },
     section: {
-        marginBottom: 24,
+        marginBottom: 0,
     },
     sectionHeader: {
         fontSize: 18,
@@ -739,11 +561,6 @@ const styles = StyleSheet.create({
     },
     searchSection: {
         marginBottom: 20,
-    },
-    sectionTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginBottom: 12,
     },
     searchContainer: {
         flexDirection: 'row',
@@ -836,6 +653,7 @@ const styles = StyleSheet.create({
     chipContainer: {
         flexDirection: 'row',
         flexWrap: 'wrap',
+        marginTop: 12,
         gap: 8,
     },
     participantChip: {
@@ -862,6 +680,12 @@ const styles = StyleSheet.create({
     removeChipButton: {
         padding: 2,
     },
+    footerContainer: {
+        paddingHorizontal: 24,
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: theme.colorLightGrey,
+    },
     createButton: {
         backgroundColor: theme.colorNouraBlue,
     },
@@ -879,6 +703,19 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
     },
+    suggestionContainer: {
+        marginTop: 8,
+        padding: 8,
+        backgroundColor: '#fff3cd',
+        borderRadius: 4,
+        borderLeftWidth: 3,
+        borderLeftColor: '#ffc107',
+    },
+    suggestionText: {
+        color: '#856404',
+        fontSize: 13,
+        fontStyle: 'italic',
+    },
     successContainer: {
         marginVertical: 16,
         backgroundColor: '#e8f5e8',
@@ -893,11 +730,6 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         marginBottom: 4,
-    },
-    redirectText: {
-        color: '#2e7d32',
-        fontSize: 14,
-        fontStyle: 'italic',
     },
     inputError: {
         borderColor: '#f44336',

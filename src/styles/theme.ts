@@ -1,4 +1,3 @@
-// Rewrite this later
 export const Colors = {
   light: {
     primary: '#6200ee',
@@ -24,13 +23,13 @@ export const Colors = {
 
 
 export const theme = {
-  colorNouraBlue: "#00a3ff",       // Noura's blue
-  colorDeepSkyBlue: "#00bfff",    // Vivid sky blue
-  colorAzureBlue: "#007fff",      // Bright azure
-  colorPaleBlue: "#d0e7f9",       // Pale sky-inspired blue
+  colorNouraBlue: "#00a3ff",
+  colorDeepSkyBlue: "#00bfff",
+  colorAzureBlue: "#007fff",
+  colorPaleBlue: "#d0e7f9",
   colorWhite: "#fff",
   colorBlack: "#000",
   colorLightGrey: "#eee",
   colorGrey: "#808080",
-  colorRed: "#ff4444",            // Red for unfollow buttons
+  colorRed: "#ff4444",
 };

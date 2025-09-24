@@ -187,7 +187,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                 let response;
                 try {
                     response = await req.json();
-                } catch (jsonError) {
+                } catch {
                     // Handle cases where response is not valid JSON
                     return {
                         success: false,
@@ -220,7 +220,7 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                     success: true,
                     data: response, // response is already the array of meetings
                 } satisfies Meetings.Response;
-            } catch (networkError) {
+            } catch {
                 // Handle network errors (no internet, server down, etc.)
                 return {
                     success: false,
@@ -301,71 +301,27 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
         },
 
         CreateMeetingWithParticipants: async (formData: FormData, token: string): Promise<Meetings.Response> => {
-            // Extract data from FormData (React Native specific) for validation
-            const formDataParts = (formData as any)._parts;
-            let title = '';
-            let type = '';
-            let location = '';
+            // Parse participants from JSON string
+            const participantsString = formData.get("participants") as string;
+            const participantIds = participantsString ? JSON.parse(participantsString) : [];
 
-            if (formDataParts) {
-                for (const [key, value] of formDataParts) {
-                    if (key === 'title') title = value;
-                    if (key === 'type') type = value;
-                    if (key === 'location') location = value;
-                }
-            }
-
-            // Client-side validation before API call
-            const validationErrors = Meetings.validateMeetingForm({ title, type, location });
-            if (Meetings.hasValidationErrors(validationErrors)) {
-                const fieldErrors: Meetings.FieldError[] = Object.entries(validationErrors)
-                    .filter(([_, error]) => error)
-                    .map(([field, error]) => ({ field, error: error! }));
-
-                return {
-                    success: false,
-                    errors: fieldErrors,
-                } satisfies Meetings.Response;
-            }
-
-            // Convert FormData to the expected JSON structure
-            const requestData: {
-                meeting: Partial<Meetings.MeetingCreateInfo>;
-                participants: Meetings.ParticipantCreateInfo[];
-            } = {
-                meeting: {},
-                participants: []
+            // Prepare request in the expected format
+            // status is always "new" in backend
+            const data = {
+                meeting: {
+                    title: formData.get("title"),
+                    type: formData.get("type"),
+                    status: "new",
+                    start_time: formData.get("start_time") || new Date().toISOString(),
+                    location: formData.get("location")
+                },
+                participants: participantIds.map((id: string) => ({ user_id: id }))
             };
 
-            if (formDataParts) {
-                for (const [key, value] of formDataParts) {
-                    if (key.startsWith('participants[')) {
-                        requestData.participants.push({ user_id: value });
-                    } else {
-                        let processedValue = value;
-
-                        // Process specific fields
-                        if (key === 'type') {
-                            // Send type as string - API will convert to type_id internally
-                            processedValue = value;
-                        } else if (key === 'type_id') {
-                            // Handle UUID type_id if provided
-                            processedValue = value;
-                        } else if (key === 'location' && (!value || value.trim() === '')) {
-                            processedValue = 'TBD';
-                        } else if (key === 'location_url' && (!value || value.trim() === '')) {
-                            processedValue = '';
-                        }
-
-                        (requestData.meeting as any)[key] = processedValue;
-                    }
-                }
-            }
-
-            // Set default status if not provided
-            if (!requestData.meeting.status) {
-                requestData.meeting.status = "new";
-            }
+            // Debug log what we're sending to the API
+            console.log('Data being sent to API:', JSON.stringify(data, null, 2));
+            console.log('Participant IDs:', participantIds);
+            console.log('Form data participants string:', participantsString);
 
             const req = await fetch(`${host}/api/v1/meeting/create`, {
                 method: "POST",
@@ -374,55 +330,50 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                     "Accept": "application/json",
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify(requestData),
+                body: JSON.stringify(data),
             });
-            const errorMessages: Record<string, string> = {
-                "PARTICIPANTS_UNAVAILABLE": "Participants are unavailable",
-            };
 
+            console.log('HTTP Status:', req.status, req.statusText);
+            console.log('Response headers:', req.headers);
 
-            let response;
-            try {
-                response = await req.json();
-            } catch (jsonError) {
-                console.error("Failed to parse JSON response:", jsonError);
-                return {
-                    success: false,
-                    errors: [{ field: "general", error: "Invalid server response" }],
-                } satisfies Meetings.Response;
-            }
+            const response = await req.json();
+            console.log('Raw API response:', response);
+
+            const errorMessages = {
+                PARTICIPANTS_UNAVAILABLE: "One or more participants are unavailable at the selected time. Please choose a different time or check participant availability.",
+                VALIDATION_TITLE_TOO_SHORT: "Title is too short",
+                VALIDATION_TYPE_TOO_SHORT: "Meeting type is too short",
+                VALIDATION_TYPE_REQUIRED: "Meeting type is required",
+                VALIDATION_STATUS_INVALID: "Status is invalid",
+                VALIDATION_LOCATION_TOO_SHORT: "Location is too short",
+                VALIDATION_START_TIME_INVALID: "Start time is invalid",
+                VALIDATION_MEETING_REQUIRED: "Meeting type is required",
+                CANNOT_ADD_YOURSELF: "Cannot add yourself as a participant",
+                MUST_ADD_PARTICIPANTS: "Must add at least one participant",
+            } as const;
+
+            // THERE MUST NEVER BE FIELD GENERAL
 
             if (!req.ok) {
-                let processedErrors: Meetings.FieldError[] = [{ field: "general", error: "Failed to create meeting" }];
+                let processedErrors: Meetings.FieldError[] = [];
 
-                // Handle different API response formats
-                if (response.errors && Array.isArray(response.errors)) {
-                    // Standard array format
-                    processedErrors = response.errors.map((error: any) => {
-                        if (error.error && errorMessages[error.error]) {
-                            return { ...error, error: errorMessages[error.error] };
-                        }
-                        return error;
-                    });
-                } else if (response.error && typeof response.error === 'string') {
-                    // Single error string format
-                    const friendlyMessage = errorMessages[response.error] || response.error;
-                    processedErrors = [{ field: "general", error: friendlyMessage }];
-                } else if (response.message && typeof response.message === 'string') {
-                    // Message field format
-                    const friendlyMessage = errorMessages[response.message] || response.message;
-                    processedErrors = [{ field: "general", error: friendlyMessage }];
-                } else if (response.errors && typeof response.errors === 'string') {
-                    // String errors field
-                    const friendlyMessage = errorMessages[response.errors] || response.errors;
-                    processedErrors = [{ field: "general", error: friendlyMessage }];
+                if (response.errors && typeof response.errors === 'string') {
+                    // Handle single error string format like "PARTICIPANTS_UNAVAILABLE"
+                    const friendlyMessage = errorMessages[response.errors as keyof typeof errorMessages] || response.errors;
+                    // Map specific error codes to appropriate fields, avoid "general"
+                    let field = "participants"; // Default field for most errors
+                    if (response.errors.includes("TITLE")) field = "title";
+                    else if (response.errors.includes("TYPE")) field = "type";
+                    else if (response.errors.includes("LOCATION")) field = "location";
+                    else if (response.errors.includes("START_TIME")) field = "start_time";
+                    
+                    processedErrors = [{ field, error: friendlyMessage }];
                 } else if (response.errors && typeof response.errors === 'object') {
-                    // Object errors field - convert to array
-                    processedErrors = Object.entries(response.errors).map(([field, error]: [string, any]) => {
-                        const errorText = typeof error === 'string' ? error : error.toString();
-                        const friendlyMessage = errorMessages[errorText] || errorText;
-                        return { field, error: friendlyMessage };
-                    });
+                    // Handle object format like {"title": "VALIDATION_TITLE_TOO_SHORT"}
+                    processedErrors = Object.entries(response.errors).map(([field, errorCode]) => ({
+                        field,
+                        error: errorMessages[errorCode as keyof typeof errorMessages] || errorCode
+                    }));
                 }
 
                 return {
@@ -431,11 +382,23 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                 } satisfies Meetings.Response;
             }
 
+            if (response.errors?.length) {
+                return {
+                    success: false,
+                    errors: response.errors.map(({ field, error }: Meetings.FieldError) => ({
+                        field,
+                        error: errorMessages[error as keyof typeof errorMessages] ?? error,
+                    })),
+                } satisfies Meetings.Response;
+            }
+
             return {
                 success: true,
                 data: response,
             } satisfies Meetings.Response;
+
         },
+
 
         GetMeetingById: async (id: string, token: string): Promise<Meetings.Response> => {
             const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/${id}`, {

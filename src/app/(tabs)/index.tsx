@@ -251,7 +251,7 @@ export default function HomeScreen() {
               {/* <Feather name="chevron-down" size={20} color={theme.colorBlack} /> */}
             </View>
           </View>
-          <TouchableOpacity style={[styles.navbarButton, { backgroundColor: useThemeColor({}, 'tabIconDefault') }]} onPress={handleNewPress} accessibilityLabel="Create event">
+          <TouchableOpacity style={styles.navbarButton} onPress={handleNewPress} accessibilityLabel="Create event">
             <Feather name="plus" size={22} color={textColor} />
           </TouchableOpacity>
         </View>
@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     margin: 0, // Remove all margins
     padding: 0, // Remove all padding
-    borderRadius: 18,
+
   },
   listContainer: {
     paddingTop: 20, // Adjusted top padding for symmetry with dynamic island

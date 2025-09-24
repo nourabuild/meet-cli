@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { CalendarRepo } from '@/repo';
 import * as SecureStore from 'expo-secure-store';
+import * as Localization from 'expo-localization';
 import { useThemeColor } from '@/lib/hooks/theme/useThemeColor';
 import { Calendars } from '@/repo/calendars';
 import Navbar from '@/lib/utils/navigation-bar';
@@ -131,6 +132,42 @@ const getDayLabel = (dayOfWeek: number): string => {
     return DAYS_OF_WEEK.find(day => day.id === dayOfWeek)?.label!;
 };
 
+const convertUtcToLocalHHMM = (time: string): string => {
+    const match = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/.exec(time ?? '');
+    if (!match) return time;
+
+    const [, hour, minute] = match;
+    const reference = new Date();
+    reference.setUTCHours(Number(hour), Number(minute), 0, 0);
+
+    const localHours = reference.getHours().toString().padStart(2, '0');
+    const localMinutes = reference.getMinutes().toString().padStart(2, '0');
+
+    return `${localHours}:${localMinutes}`;
+};
+
+
+//   <View style={[styles.itemCard, { backgroundColor: cardColor, marginBottom: 15 }]}>
+//                                 <Text style={[styles.dayName, { color: textColor, textAlign: 'center' }]}>
+//                                     Device Timezone: {Localization.getCalendars()[0]?.timeZone}
+//                                 </Text>
+//                                 <Text style={[styles.dayName, { color: textColor, textAlign: 'center', fontSize: 12 }]}>
+//                                     Region: {Localization.getLocales()[0]?.regionCode}
+//                                 </Text>
+//                                 <Text style={[styles.dayName, { color: textColor, textAlign: 'center', fontSize: 12 }]}>
+//                                     Language: {Localization.getLocales()[0]?.languageCode}
+//                                 </Text>
+//                                 <Text style={[styles.dayName, { color: textColor, textAlign: 'center', fontSize: 12 }]}>
+//                                     Calendar: {Localization.getCalendars()[0]?.calendar}
+//                                 </Text>
+//                                 <Text style={[styles.dayName, { color: textColor, textAlign: 'center', fontSize: 12 }]}>
+//                                     Uses 24h: {Localization.getCalendars()[0]?.uses24hourClock ? 'Yes' : 'No'}
+//                                 </Text>
+//                             </View>
+
+
+
+
 export default function AvailabilityScreen() {
     const backgroundColor = useThemeColor({}, 'background');
     const textColor = useThemeColor({}, 'text');
@@ -196,8 +233,14 @@ export default function AvailabilityScreen() {
                 }
             }
 
-            dispatchAvailability({ type: 'SET_SCHEDULE', payload: availabilityData });
-            setAvailabilityState({ status: "success", data: availabilityData });
+            const localizedAvailability = availabilityData.map(item => ({
+                ...item,
+                start_time: typeof item.start_time === 'string' ? convertUtcToLocalHHMM(item.start_time) : item.start_time,
+                end_time: typeof item.end_time === 'string' ? convertUtcToLocalHHMM(item.end_time) : item.end_time,
+            }));
+
+            dispatchAvailability({ type: 'SET_SCHEDULE', payload: localizedAvailability });
+            setAvailabilityState({ status: "success", data: localizedAvailability });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
             setAvailabilityState({ status: "error", error: errorMessage });
@@ -232,8 +275,14 @@ export default function AvailabilityScreen() {
                 }
             }
 
-            dispatchExceptions({ type: 'SET_EXCEPTIONS', payload: exceptionData });
-            setExceptionState({ status: "success", data: exceptionData });
+            const localizedExceptions = exceptionData.map(exception => ({
+                ...exception,
+                start_time: typeof exception.start_time === 'string' ? convertUtcToLocalHHMM(exception.start_time) : exception.start_time,
+                end_time: typeof exception.end_time === 'string' ? convertUtcToLocalHHMM(exception.end_time) : exception.end_time,
+            }));
+
+            dispatchExceptions({ type: 'SET_EXCEPTIONS', payload: localizedExceptions });
+            setExceptionState({ status: "success", data: localizedExceptions });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
             setExceptionState({ status: "error", error: errorMessage });
@@ -471,6 +520,8 @@ export default function AvailabilityScreen() {
 
     const handleUpdateTime = (dayId: number, index: number, field: 'start_time' | 'end_time', value: string) => {
         const formatted = formatPartialTime(value);
+
+        // Since backend handles UTC conversion, just use the local time directly
         // Update local view model by mapping availability entries
         // Find the actual nth entry for that day and update via UPDATE_TIME
         // First, find nth index in availability state
@@ -504,6 +555,59 @@ export default function AvailabilityScreen() {
 
     const handleAddException = () => {
         addUserExceptionDate();
+    };
+
+    // ---------------------------------------------
+    // Locale / time formatting helpers (memoized)
+    // ---------------------------------------------
+    const localeInfo = useMemo(() => {
+        const locale = Localization.getLocales()[0];
+        const calendar = Localization.getCalendars()[0];
+        return {
+            localeTag: locale?.languageTag,
+            uses24h: calendar?.uses24hourClock ?? true,
+            timeZone: calendar?.timeZone
+        };
+    }, []);
+
+    const formatExceptionDate = useMemo(() => {
+        const localeTag = localeInfo.localeTag ?? 'en-US';
+        const options: Intl.DateTimeFormatOptions = {
+            month: 'short',
+            day: 'numeric',
+            weekday: 'short',
+        };
+        let formatter: Intl.DateTimeFormat | null = null;
+        try {
+            formatter = new Intl.DateTimeFormat(localeTag, options);
+        } catch (e) {
+            formatter = null;
+        }
+
+        return (isoDate: string | null | undefined): string => {
+            if (!isoDate) return 'Invalid date';
+            const parsed = new Date(isoDate);
+            if (Number.isNaN(parsed.getTime())) return 'Invalid date';
+            if (formatter) return formatter.format(parsed);
+            const month = (parsed.getMonth() + 1).toString().padStart(2, '0');
+            const day = parsed.getDate().toString().padStart(2, '0');
+            return `${parsed.getFullYear()}-${month}-${day}`;
+        };
+    }, [localeInfo.localeTag]);
+
+    const formatDisplayInterval = (start: string, end: string): string => {
+        // We now store local HH:MM directly; optionally adapt to 12h if device not 24h
+        if (!localeInfo.uses24h) {
+            const to12h = (t: string) => {
+                if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) return t;
+                let [h, m] = t.split(':').map(Number);
+                const suffix = h >= 12 ? 'PM' : 'AM';
+                h = h % 12 || 12;
+                return `${h}:${m.toString().padStart(2, '0')} ${suffix}`;
+            };
+            return `${to12h(start)} - ${to12h(end)}`;
+        }
+        return `${start} - ${end}`;
     };
 
     return (
@@ -540,8 +644,86 @@ export default function AvailabilityScreen() {
                         {availabilityState.status === "error" && `Error: ${availabilityState.error}`}
                         {(availabilityState.status === "success" || availabilityState.status === 'editing') && availability.length === 0 && "No availability set"}
                     </Text>
+
                     {(availabilityState.status === "success" || availabilityState.status === 'editing') && (
                         <View>
+
+                            <View style={[styles.itemCard, { backgroundColor: cardColor, marginBottom: 15 }]}>
+                                <Text style={[styles.dayName, { color: textColor, textAlign: 'center' }]}>
+                                    Device Timezone: {Localization.getCalendars()[0]?.timeZone}
+                                </Text>
+                                <Text style={[styles.dayName, { color: textColor, textAlign: 'center', fontSize: 12 }]}>
+                                    Region: {Localization.getLocales()[0]?.regionCode}
+                                </Text>
+                                <Text style={[styles.dayName, { color: textColor, textAlign: 'center', fontSize: 12 }]}>
+                                    Language: {Localization.getLocales()[0]?.languageCode}
+                                </Text>
+                                <Text style={[styles.dayName, { color: textColor, textAlign: 'center', fontSize: 12 }]}>
+                                    Calendar: {Localization.getCalendars()[0]?.calendar}
+                                </Text>
+                                <Text style={[styles.dayName, { color: textColor, textAlign: 'center', fontSize: 12 }]}>
+                                    Uses 24h: {Localization.getCalendars()[0]?.uses24hourClock ? 'Yes' : 'No'}
+                                </Text>
+                            </View>
+
+                            {/* <View style={{ marginBottom: 15 }}>
+                                {DAYS_OF_WEEK.map(day => {
+                                    const intervals = groupedAvailability[day.id] || [];
+                                    if (intervals.length === 0) {
+                                        return (
+                                            <Text key={day.id} style={{ color: textColor }}>
+                                                {day.label}: Unavailable
+                                            </Text>
+                                        );
+                                    }
+
+                                    return intervals.map((interval, idx) => {
+
+                                        const [startHour, startMin] = interval.start_time.split(':').map(Number);
+                                        const [endHour, endMin] = interval.end_time.split(':').map(Number);
+
+                                        const deviceLocale = Localization.getLocales()[0];
+                                        const deviceCalendar = Localization.getCalendars()[0];
+                                        const deviceTimeZone = deviceCalendar?.timeZone || 'UTC';
+                                        const localeTag = deviceLocale?.languageTag || 'en-US';
+                                        const use24Hour = deviceCalendar?.uses24hourClock ?? true;
+
+                                        const today = new Date();
+                                        const startTimeUTC = new Date(today);
+                                        const endTimeUTC = new Date(today);
+                                        startTimeUTC.setUTCHours(startHour, startMin, 0, 0);
+                                        endTimeUTC.setUTCHours(endHour, endMin, 0, 0);
+
+                                        const timeFormatOptions: Intl.DateTimeFormatOptions = {
+                                            hour12: !use24Hour,
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                            timeZone: deviceTimeZone
+                                        };
+
+                                        const localStartTime = startTimeUTC.toLocaleTimeString(localeTag, timeFormatOptions);
+                                        const localEndTime = endTimeUTC.toLocaleTimeString(localeTag, timeFormatOptions);
+
+                                        return (
+                                            <View key={`${day.id}-${idx}`}>
+                                                <Text style={{ color: textColor }}>
+                                                    {day.label}:
+                                                </Text>
+                                                <Text style={{ color: textColor, fontSize: 11, marginLeft: 10 }}>
+                                                    Local: {localStartTime} - {localEndTime}
+                                                </Text>
+                                                <Text style={{ color: textColor, fontSize: 11, marginLeft: 10 }}>
+                                                    UTC: {startTimeUTC.toISOString().substr(11, 5)} - {endTimeUTC.toISOString().substr(11, 5)}
+                                                </Text>
+                                                <Text style={{ color: textColor, fontSize: 11, marginLeft: 10 }}>
+                                                    EU (CET): {startTimeUTC.toLocaleTimeString(localeTag, { timeZone: 'Europe/Berlin', hour12: false, hour: '2-digit', minute: '2-digit' })} - {endTimeUTC.toLocaleTimeString(localeTag, { timeZone: 'Europe/Berlin', hour12: false, hour: '2-digit', minute: '2-digit' })}
+                                                </Text>
+                                            </View>
+                                        );
+                                    });
+                                })}
+                            </View> */}
+
                             {DAYS_OF_WEEK.map(day => {
                                 const intervals = groupedAvailability[day.id] || [];
                                 const isAvailable = intervals.length > 0;
@@ -567,7 +749,7 @@ export default function AvailabilityScreen() {
                                             <View>
                                                 {intervals.map((interval, idx) => (
                                                     <Text key={idx} style={[styles.timeText, { color: textColor }]}>
-                                                        {interval.start_time} - {interval.end_time}
+                                                        {formatDisplayInterval(interval.start_time, interval.end_time)}
                                                     </Text>
                                                 ))}
                                             </View>
@@ -593,6 +775,12 @@ export default function AvailabilityScreen() {
                                                     maxLength={5}
                                                     style={styles.timeInput}
                                                 />
+                                                <TouchableOpacity
+                                                    onPress={() => handleRemoveTime(day.id, idx)}
+                                                    style={styles.removeIntervalButton}
+                                                >
+                                                    <Text style={styles.removeIntervalButtonText}>Remove</Text>
+                                                </TouchableOpacity>
                                             </View>
                                         ))}
                                     </View>
@@ -680,10 +868,12 @@ export default function AvailabilityScreen() {
                     {(exceptionState.status === "success" || exceptionState.status === 'editing') && exceptions.map((exception, index) => (
                         <View key={index} style={[styles.itemCard, { backgroundColor: cardColor }]}>
                             <Text style={[styles.exceptionDate, { color: textColor }]}>
-                                {exception.date ? new Date(exception.date).toLocaleDateString() : "Invalid date"}
+                                {formatExceptionDate(exception.date)}
                             </Text>
                             <Text style={[styles.exceptionTime, { color: textColor }]}>
-                                {exception.start_time && exception.end_time ? `${exception.start_time} - ${exception.end_time}` : "All day"}
+                                {exception.start_time && exception.end_time
+                                    ? formatDisplayInterval(exception.start_time, exception.end_time)
+                                    : "All day"}
                             </Text>
                             <Text style={[styles.exceptionStatus, {
                                 color: exception.is_available ? '#10B981' : '#EF4444'
@@ -861,5 +1051,18 @@ const styles = StyleSheet.create({
     exceptionStatus: {
         fontSize: 14,
         fontWeight: '500',
+    },
+    removeIntervalButton: {
+        marginLeft: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        backgroundColor: '#F3F4F6',
+        borderRadius: 6,
+        alignSelf: 'center',
+    },
+    removeIntervalButtonText: {
+        color: '#6B7280',
+        fontWeight: '600',
+        fontSize: 12,
     },
 });

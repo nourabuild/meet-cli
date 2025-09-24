@@ -44,3 +44,11 @@ pro:
 
 upgrade-modules:
 	npx npm-check-updates -u
+
+
+check:
+	npx expo install --check
+
+doctor:
+	npx expo-doctor
+

@@ -39,16 +39,17 @@ export namespace Users {
     export type Response = SuccessResponse | FailureResponse;
 
     // Separate type for search results that includes count and data array
-    export type SearchResponse = {
-        success: true;
-        data: {
+    export type SearchResponse =
+        | {
+            success: true;
             count: number;
-            data: User[];
+            users: User[];
+        }
+        | {
+            success: false;
+            errors: FieldError[];
         };
-    } | {
-        success: false;
-        errors: FieldError[];
-    };
+
 }
 
 const API_ROUTE_DOMAIN = "api/v1/user";
@@ -208,7 +209,8 @@ const NewUserRepository = (host: string): UserRepository => {
 
             return {
                 success: true,
-                data: response,
+                count: response.count,
+                users: response.data,
             } satisfies Users.SearchResponse;
         },
         UpdateUser: async (formData: FormData, token: string) => {

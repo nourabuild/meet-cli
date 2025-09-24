@@ -157,6 +157,7 @@ const NewAuthRepository = (host: string): AuthRepository => {
                 "VALIDATION_EMAIL_INVALID_EMAIL": "Invalid email format",
                 "REQUIRED_FIELD_MISSING": "Required field missing",
                 "VALIDATION_BODY_REQUIRED": "Required field missing",
+                "DOES_NOT_MEET_COMPLEXITY": "Password must contain at least 1 uppercase letter, 1 number, and 1 special character",
                 "VALIDATION_NAME_REQUIRED": "Name is required",
                 "VALIDATION_ACCOUNT_REQUIRED": "Account name is required",
                 "VALIDATION_EMAIL_REQUIRED": "Email is required",
@@ -286,3 +287,5 @@ export default NewAuthRepository;
 
 
 //         },
+
+
