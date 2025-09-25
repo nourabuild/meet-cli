@@ -28,14 +28,19 @@ function AuthLayout() {
             <Stack>
                 <Stack.Protected guard={!isAuthenticated}>
                     <Stack.Screen
-                        name="(auth)"
+                        name="login-user"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="register-user"
                         options={{ headerShown: false }}
                     />
                 </Stack.Protected>
 
-                <Stack.Protected guard={isAuthenticated && !hasCompletedOnboarding}>
+                {/* <Stack.Protected guard={isAuthenticated && !hasCompletedOnboarding}> */}
+                <Stack.Protected guard={!hasCompletedOnboarding}>
                     <Stack.Screen
-                        name="(onboarding)"
+                        name="onboarding-user"
                         options={{ headerShown: false }}
                     />
                 </Stack.Protected>

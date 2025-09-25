@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useReducer, ReactNode, useCallback } from 'react';
-import { ActivityIndicator, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useReduxSelector, useReduxDispatch } from '@/lib/hooks';
@@ -234,27 +233,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     /* ----------------- Provider ----------------- */
 
-    // Show a minimal splash while rehydrating on first launch
-    if (isRehydrated !== true) {
-        return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#00a3ff" />
-            </View>
-        );
+    const contextValue: AuthContextType = {
+        authState,
+        isAuthenticated,
+        hasCompletedOnboarding,
+        login,
+        logout,
+        checkAuth,
+        checkOnboardingStatus,
+    };
+
+    const isBootstrapping =
+        isRehydrated !== true || authState.status === 'loading' || authState.status === 'idle';
+
+    if (isBootstrapping) {
+        return <AuthContext.Provider value={contextValue} />;
     }
 
     return (
-        <AuthContext.Provider
-            value={{
-                authState,
-                isAuthenticated,
-                hasCompletedOnboarding,
-                login,
-                logout,
-                checkAuth,
-                checkOnboardingStatus,
-            }}
-        >
+        <AuthContext.Provider value={contextValue}>
             {children}
         </AuthContext.Provider>
     );

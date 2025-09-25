@@ -34,7 +34,6 @@ export const usePushNotification = () => {
         });
 
         const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-            console.log(response);
         });
 
         return () => {
@@ -75,7 +74,6 @@ export const usePushNotification = () => {
         followerAccount: string
     ) => {
         if (!targetUserPushToken) {
-            console.log('No push token available for target user');
             return;
         }
 
@@ -90,7 +88,6 @@ export const usePushNotification = () => {
 
         try {
             await sendPushNotification(targetUserPushToken, title, body, data);
-            console.log('Follow notification sent successfully');
         } catch (error) {
             console.error('Failed to send follow notification:', error);
         }
@@ -114,7 +111,6 @@ export const usePushNotification = () => {
                 projectId: Constants.expoConfig?.extra?.eas.projectId,
             });
         } else {
-            console.log('Must use physical device for Push Notifications');
         }
 
         if (Platform.OS === 'android') {

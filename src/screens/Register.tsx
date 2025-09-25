@@ -58,7 +58,7 @@ function formReducer(state: FormFields, action: { name: keyof FormFields; value:
 // Component
 // -------------------------------
 
-function RegisterScreen() {
+function Register() {
     // Password visibility hooks
     const {
         visible: passwordVisible,
@@ -116,10 +116,7 @@ function RegisterScreen() {
             }
 
             setRegisterState({ status: "success" });
-
-            setTimeout(() => {
-                router.replace("/login-user");
-            }, 1500);
+            router.replace("/login-user");
         } catch (error) {
             console.error("Registration error:", error);
             setRegisterState({
@@ -150,7 +147,7 @@ function RegisterScreen() {
                 >
                     <View style={styles.formContainer}>
                         <NouraImage
-                            source={require("../../../assets/icon.png")}
+                            source={require("../../assets/icon.png")}
                             style={styles.logo}
                             containerStyle={styles.logoContainer}
                             resizeMode="contain"
@@ -293,7 +290,7 @@ function RegisterScreen() {
     );
 }
 
-export default RegisterScreen;
+export default Register;
 
 const styles = StyleSheet.create({
     container: {

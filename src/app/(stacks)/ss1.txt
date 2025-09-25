@@ -1,0 +1,248 @@
+import React, { useReducer, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
+import { router } from 'expo-router';
+import Feather from '@expo/vector-icons/Feather';
+import * as SecureStore from 'expo-secure-store';
+
+import { theme } from '@/styles/theme';
+import { NouraButton } from '@/lib/components';
+import { Users } from '@/repo/users';
+import { UserRepo } from '@/repo';
+import { useReduxSelector } from '@/lib/hooks';
+import SafeAreaContainer from '@/lib/utils/safe-area-container';
+import { useThemeColor } from '@/lib/hooks/theme/useThemeColor';
+
+// -------------------------------
+// Form + State Management
+// -------------------------------
+
+type CreateMeetingState =
+    | { status: "idle" }
+    | { status: "loading" }
+    | { status: "error"; error: string }
+    | { status: "success"; data: any };
+
+type FormFields = {
+    title: string;
+    meetingType: string;
+    assignedTo: string;
+    location: string;
+    participants: Users.User[];
+};
+
+const initialFormState: FormFields = {
+    title: "",
+    meetingType: "",
+    assignedTo: "",
+    location: "",
+    participants: [],
+};
+
+function formReducer(state: FormFields, action: { name: keyof FormFields; value: string } | { type: 'SET_PARTICIPANTS'; participants: Users.User[] } | { type: 'ADD_PARTICIPANT'; participant: Users.User } | { type: 'REMOVE_PARTICIPANT'; participantId: string }) {
+    if ('type' in action) {
+        switch (action.type) {
+            case 'SET_PARTICIPANTS':
+                return { ...state, participants: action.participants };
+            case 'ADD_PARTICIPANT':
+                const existingParticipant = state.participants.find(p => p.id === action.participant.id);
+                if (!existingParticipant) {
+                    return { ...state, participants: [...state.participants, action.participant] };
+                }
+                return state;
+            case 'REMOVE_PARTICIPANT':
+                return { ...state, participants: state.participants.filter(p => p.id !== action.participantId) };
+            default:
+                return state;
+        }
+    }
+
+    return {
+        ...state,
+        [action.name]: action.value,
+    };
+}
+
+// -------------------------------
+// Component
+// -------------------------------
+
+function NewMeeting() {
+    const currentUser = useReduxSelector((state) => state.user?.user);
+
+    const textColor = useThemeColor({}, 'text');
+    const cardColor = useThemeColor({}, 'card');
+
+    const [formState, dispatch] = useReducer(formReducer, {
+        ...initialFormState,
+        participants: currentUser ? [currentUser] : []
+    });
+    const [createMeetingState, setCreateMeetingState] = useState<CreateMeetingState>({ status: "idle" });
+
+
+    const handleClose = () => {
+        router.back();
+    };
+
+
+    const handleSearchUsers = async (query: string) => {
+        setCreateMeetingState({ status: "idle" });
+
+        if (!query.trim()) {
+            dispatch({ type: 'SET_PARTICIPANTS', participants: currentUser ? [currentUser] : [] });
+            return;
+        }
+
+        try {
+            const token = await SecureStore.getItemAsync('access_token');
+            if (!token) {
+                console.error('No auth token available');
+                return;
+            }
+
+            const controller = new AbortController();
+            const searchResponse = await UserRepo.SearchUsers(query, token, controller.signal);
+
+            if (searchResponse.success && searchResponse.data) {
+                // Extract the users array from the response
+                const users = searchResponse.data.data || [];
+                // Ensure current user is included
+                if (currentUser && !users.find(u => u.id === currentUser.id)) {
+                    users.unshift(currentUser);
+                }
+                dispatch({ type: 'SET_PARTICIPANTS', participants: users });
+            } else {
+                dispatch({ type: 'SET_PARTICIPANTS', participants: currentUser ? [currentUser] : [] });
+            }
+        } catch (error) {
+            console.error('Error searching users:', error);
+            dispatch({ type: 'SET_PARTICIPANTS', participants: currentUser ? [currentUser] : [] });
+        }
+    }
+
+    return (
+        <SafeAreaContainer style={StyleSheet.flatten([styles.container, { backgroundColor: cardColor }])}>
+            <View style={styles.header}>
+                <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+                    <Feather name="x" size={24} color={textColor} />
+                </TouchableOpacity>
+                <Text style={[styles.headerTitle, { color: textColor }]}>New Meeting</Text>
+                <View style={{ width: 40 }} /> {/* Placeholder for alignment */}
+            </View>
+
+            <ScrollView contentContainerStyle={styles.form}>
+                <TextInput
+                    style={[styles.input, { borderColor: '#dddddd', color: textColor }]}
+                    placeholder="Meeting Title"
+                    placeholderTextColor={theme.colorGrey}
+                    value={formState.title}
+                    onChangeText={(text) => dispatch({ name: 'title', value: text })}
+                />
+                <TextInput
+                    style={[styles.input, { borderColor: '#dddddd', color: textColor }]}
+                    placeholder="Meeting Type"
+                    placeholderTextColor={theme.colorGrey}
+                    value={formState.meetingType}
+                    onChangeText={(text) => dispatch({ name: 'meetingType', value: text })}
+                />
+                <TextInput
+                    style={[styles.input, { borderColor: '#dddddd', color: textColor }]}
+                    placeholder="Location"
+                    placeholderTextColor={theme.colorGrey}
+                    value={formState.location}
+                    onChangeText={(text) => dispatch({ name: 'location', value: text })}
+                />
+
+                <TextInput
+                    style={[styles.input, { borderColor: '#dddddd', color: textColor }]}
+                    placeholder="Search Participants"
+                    placeholderTextColor={theme.colorGrey}
+                    onChangeText={handleSearchUsers}
+                />
+
+                <View style={styles.participantsContainer}>
+                    {formState.participants.map((participant) => (
+                        <View key={participant.id} style={[styles.participantBadge, { backgroundColor: theme.colorNouraBlue + '20' }]}>
+                            <Text style={{ color: textColor }}>{participant.name}</Text>
+                            {participant.id !== currentUser?.id && (
+                                <TouchableOpacity onPress={() => dispatch({ type: 'REMOVE_PARTICIPANT', participantId: participant.id })} style={styles.removeParticipantButton}>
+                                    <Feather name="x" size={16} color={textColor} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    ))}
+                </View>
+
+                {createMeetingState.status === "error" && (
+                    <Text style={styles.errorText}>{createMeetingState.error}</Text>
+                )}
+
+                <NouraButton
+                    title={createMeetingState.status === "loading" ? "Creating..." : "Create Meeting"}
+                    onPress={async () => {
+                        setCreateMeetingState({ status: "loading" });
+                    }}
+                />
+
+            </ScrollView>
+        </SafeAreaContainer>
+    );
+
+}
+
+export default NewMeeting;
+
+
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#dddddd',
+    },
+    closeButton: {
+        padding: 8,
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+    form: {
+        padding: 16,
+    },
+    input: {
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 16,
+        fontSize: 16,
+    },
+    participantsContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginBottom: 16,
+    },
+    participantBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        borderRadius: 16,
+        marginRight: 8,
+        marginBottom: 8,
+    },
+    removeParticipantButton: {
+        marginLeft: 4,
+        padding: 4,
+    },
+    errorText: {
+        color: theme.colorRed,
+        marginBottom: 16,
+    },
+
+}); 

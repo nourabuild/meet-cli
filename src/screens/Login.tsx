@@ -51,7 +51,7 @@ function formReducer(state: FormFields, action: { name: keyof FormFields; value:
 // Component
 // -------------------------------
 
-function LoginScreen() {
+function Login() {
     const { visible, toggleVisibility } = usePasswordVisibility();
     const { login } = useAuth();
 
@@ -106,7 +106,7 @@ function LoginScreen() {
                 >
                     <View style={styles.formContainer}>
                         <NouraImage
-                            source={require("../../../assets/icon.png")}
+                            source={require("../../assets/icon.png")}
                             style={styles.logo}
                             containerStyle={styles.logoContainer}
                             resizeMode="contain"
@@ -182,7 +182,7 @@ function LoginScreen() {
     );
 }
 
-export default LoginScreen;
+export default Login;
 
 // -------------------------------
 // Styles

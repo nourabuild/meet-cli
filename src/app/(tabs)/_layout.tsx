@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import Feather from '@expo/vector-icons/Feather';
-import { View } from "react-native";
+import { Button, View } from "react-native";
 import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 
 function AppLayout() {
@@ -21,6 +21,8 @@ function AppLayout() {
                         tabBarIcon: ({ size, color }) => (
                             <Feather name="home" size={size} color={color} />
                         ),
+                        headerRight: () => <Button title="Info" onPress={() => alert('This is the home screen!')}
+                        />,
                     }}
                 />
                 <Tabs.Screen

@@ -102,7 +102,7 @@ function weeklyScheduleReducer(state: WeeklySchedule[], action: { type: string; 
     }
 }
 
-export default function OnboardingCalendarScreen() {
+export default function OnboardingCalendar() {
     const [weeklySchedule, dispatchWeeklySchedule] = useReducer(weeklyScheduleReducer, initialWeeklySchedule);
     const [submissionState, setSubmissionState] = useState<CalendarSubmissionState>({ status: "idle" });
     const { checkOnboardingStatus } = useAuth();
