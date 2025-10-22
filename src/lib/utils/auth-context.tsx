@@ -63,10 +63,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const [authState, dispatchAuth] = useReducer(authReducer, { status: "idle" });
     const userSlice = useReduxSelector((state) => state.user);
     const user = userSlice?.user ?? null;
-    const isPersisted = userSlice?.isPersisted ?? null;
+    // const isPersisted = userSlice?.isPersisted ?? null;
     const isRehydrated = userSlice?.isRehydrated ?? null;
-    console.log("[AuthProvider] Redux user slice:", userSlice);
-    console.log("[AuthProvider] isRehydrated:", isRehydrated, "isPersisted:", isPersisted);
+    // console.log("[AuthProvider] Redux user slice:", userSlice);
+    // console.log("[AuthProvider] isRehydrated:", isRehydrated, "isPersisted:", isPersisted);
     // Use isPersisted and isRehydrated from userSlice
     const dispatch = useReduxDispatch();
 
@@ -131,7 +131,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             } else {
                 dispatchAuth({ type: "SET_ERROR", error: "Failed to fetch onboarding status" });
             }
-            console.log("Onboarding status checked:", result);
+            // console.log("Onboarding status checked:", result);
         } catch (error) {
             console.error("Error checking onboarding status:", error);
             dispatchAuth({
@@ -157,26 +157,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 // Manually trigger persistence action after a brief delay to ensure persistence completes
                 setTimeout(() => {
                     dispatch(createAction(REMEMBER_PERSISTED)());
-                    console.log("[login] Manually dispatched REMEMBER_PERSISTED action");
+                    // console.log("[login] Manually dispatched REMEMBER_PERSISTED action");
                 }, 500);
 
                 // Debug: inspect AsyncStorage for redux-remember persisted user after a brief delay
                 setTimeout(async () => {
                     try {
-                        const persistedUser = await AsyncStorage.getItem("user");
-                        const allKeys = await AsyncStorage.getAllKeys();
-                        console.log("[login] All AsyncStorage keys after delay:", allKeys);
-                        console.log("[login] Persisted user in AsyncStorage after delay:", persistedUser);
+                        // const persistedUser = await AsyncStorage.getItem("user");
+                        // const allKeys = await AsyncStorage.getAllKeys();
+                        // console.log("[login] All AsyncStorage keys after delay:", allKeys);
+                        // console.log("[login] Persisted user in AsyncStorage after delay:", persistedUser);
 
                         // Check for the redux-remember key format
                         const rememberUserKey = await AsyncStorage.getItem("@@remember-user");
-                        console.log("[login] Redux-remember user key after delay:", rememberUserKey);
+                        // console.log("[login] Redux-remember user key after delay:", rememberUserKey);
 
                         // Parse the JSON to see the actual structure
                         if (rememberUserKey) {
                             try {
-                                const parsed = JSON.parse(rememberUserKey);
-                                console.log("[login] Parsed redux-remember data:", parsed);
+                                // const parsed = JSON.parse(rememberUserKey);
+                                // console.log("[login] Parsed redux-remember data:", parsed);
                             } catch (e) {
                                 console.log("[login] Failed to parse redux-remember data:", e);
                             }

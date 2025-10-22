@@ -4,6 +4,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { BlurView } from 'expo-blur';
 import { theme } from '@/styles/theme';
 
+
 export interface NouraTimePickerProps {
     /**
      * The current selected date
@@ -49,6 +50,12 @@ export interface NouraTimePickerProps {
      * Custom subtitle for the picker
      */
     subtitle?: string;
+
+    /**
+     * Minute interval for selectable times. Defaults to 1 (no restriction).
+     * Common values: 5, 10, 15, 30.
+     */
+    minuteInterval?: number;
 }
 
 function NouraTimePicker({
@@ -60,8 +67,33 @@ function NouraTimePicker({
     minimumDate,
     maximumDate,
     title = "Select Date & Time",
-    subtitle
+    subtitle,
+    minuteInterval = 1,
 }: NouraTimePickerProps) {
+    const clampToInterval = React.useCallback((date: Date | undefined) => {
+        if (!date || minuteInterval <= 1) {
+            return date;
+        }
+        const interval = Math.max(1, Math.min(30, minuteInterval)); // iOS supports up to 30
+        const rounded = new Date(date);
+        const minutes = rounded.getMinutes();
+        const remainder = minutes % interval;
+
+        if (remainder !== 0) {
+            const half = interval / 2;
+            const adjust = remainder >= half ? interval - remainder : -remainder;
+            rounded.setMinutes(minutes + adjust);
+        }
+
+        rounded.setSeconds(0, 0);
+        return rounded;
+    }, [minuteInterval]);
+
+    const handleChange = React.useCallback((event: any, selectedDate?: Date) => {
+        const adjusted = clampToInterval(selectedDate);
+        onChange(event, adjusted);
+    }, [clampToInterval, onChange]);
+
     // Helper functions for formatting
     const formatDateShort = (date: Date) => {
         const locale = Intl.DateTimeFormat().resolvedOptions().locale || 'en-US';
@@ -121,14 +153,15 @@ function NouraTimePicker({
 
                             <View style={styles.pickerContainer}>
                                 <DateTimePicker
-                                    value={value}
+                                    value={clampToInterval(value) ?? value}
                                     mode="datetime"
                                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                                    onChange={onChange}
+                                    onChange={handleChange}
                                     style={styles.dateTimePicker}
                                     locale={Intl.DateTimeFormat().resolvedOptions().locale}
                                     minimumDate={minimumDate}
                                     maximumDate={maximumDate}
+                                    {...(Platform.OS === 'ios' ? { minuteInterval: Math.max(1, Math.min(30, minuteInterval)) } : {})}
                                 />
                             </View>
                         </TouchableOpacity>

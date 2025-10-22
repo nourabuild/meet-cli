@@ -19,7 +19,7 @@ type SettingsItem = {
     badge?: string;
 };
 
-export default function SettingsScreen() {
+export default function SettingsPage() {
     const { logout } = useAuth();
 
     const backgroundColor = useThemeColor({}, 'background');
@@ -72,52 +72,54 @@ export default function SettingsScreen() {
     const handleSettingsPress = (item: SettingsItem) => {
         switch (item.id) {
             case 'personal':
-                router.push('/profile-settings/personal');
-                break;
-
-            case 'availability':
-                router.push('/profile-settings/availability');
-                break;
-
-            case 'billing':
-                Alert.alert(
-                    "Billing & Subscription",
-                    "Manage your subscription, view billing history, and update payment methods.",
-                    [{ text: "OK" }]
-                );
-                break;
-
-            case 'integrations':
-                Alert.alert(
-                    "Integrations",
-                    "Connect with third-party services like Slack, Discord, and Zoom.",
-                    [{ text: "OK" }]
-                );
-                break;
-
-            case 'notifications':
-                router.push('/profile-settings/notifications');
+                router.push('/show-settings/personal');
                 break;
 
             case 'preferences':
-                router.push('/profile-settings/preferences');
+                router.push('/show-settings/preferences');
                 break;
 
-            case 'security':
-                Alert.alert(
-                    "Security & Privacy",
-                    "Manage two-factor authentication, privacy settings, and data controls.",
-                    [{ text: "OK" }]
-                );
-                break;
+            // case 'availability':
+            //     router.push('/show-settings/availability');
+            //     break;
 
-            case 'teams':
-                Alert.alert(
-                    "Teams & Organizations",
-                    "Create and manage teams, invite members, and set organization permissions.",
-                    [{ text: "OK" }]
-                );
-                break;
+            // case 'billing':
+            //     Alert.alert(
+            //         "Billing & Subscription",
+            //         "Manage your subscription, view billing history, and update payment methods.",
+            //         [{ text: "OK" }]
+            //     );
+            //     break;
+
+            // case 'integrations':
+            //     Alert.alert(
+            //         "Integrations",
+            //         "Connect with third-party services like Slack, Discord, and Zoom.",
+            //         [{ text: "OK" }]
+            //     );
+            //     break;
+
+            // case 'notifications':
+            //     router.push('/show-settings/notifications');
+            //     break;
+
+
+
+            // case 'security':
+            //     Alert.alert(
+            //         "Security & Privacy",
+            //         "Manage two-factor authentication, privacy settings, and data controls.",
+            //         [{ text: "OK" }]
+            //     );
+            //     break;
+
+            // case 'teams':
+            //     Alert.alert(
+            //         "Teams & Organizations",
+            //         "Create and manage teams, invite members, and set organization permissions.",
+            //         [{ text: "OK" }]
+            //     );
+            //     break;
 
             default:
                 if (item.action) {
@@ -171,16 +173,7 @@ export default function SettingsScreen() {
             backgroundColor={backgroundColor}
             edges={['bottom']}>
             <View style={[styles.container, { backgroundColor }]}>
-                <View style={styles.header}>
-                    <View style={styles.headerLeft}>
-                        <TouchableOpacity
-                            onPress={() => router.back()}
-                        >
-                            <Feather name="arrow-left" size={24} color={textColor} />
-                        </TouchableOpacity>
-                        <Text style={[styles.title, { color: textColor }]}>Settings</Text>
-                    </View>
-                </View>
+
 
                 <ScrollView
                     style={styles.scrollView}
@@ -218,22 +211,22 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-    },
-    headerLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-    },
+    // header: {
+    //     flexDirection: 'row',
+    //     alignItems: 'center',
+    //     paddingHorizontal: 20,
+    //     paddingVertical: 16,
+    // },
+    // headerLeft: {
+    //     flexDirection: 'row',
+    //     alignItems: 'center',
+    //     gap: 12,
+    // },
 
-    title: {
-        fontSize: 20,
-        fontWeight: "bold",
-    },
+    // title: {
+    //     fontSize: 20,
+    //     fontWeight: "bold",
+    // },
     scrollView: {
         flex: 1,
     },

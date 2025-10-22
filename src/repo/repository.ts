@@ -28,8 +28,11 @@ export interface UserRepository {
 
 export interface CalendarRepository {
     GetUserWeeklyAvailability: (token: string) => Promise<Calendars.Response>;
+    GetUserCalendarEntries: (userId: string, token: string) => Promise<Calendars.CalendarEntriesResponse>;
     GetUserExceptionDates: (token: string) => Promise<Calendars.Response>;
     GetOnboardingStatus: (token: string) => Promise<Calendars.OnboardingResponse>;
+    GetUserSettings: (token: string) => Promise<Calendars.UserSettingsResponse>;
+    UpsertUserSettings: (payload: Calendars.UserSettingsUpdate, token: string) => Promise<Calendars.UserSettingsResponse>;
     AddUserWeeklyAvailability: (dayOfWeek: number, intervals: Calendars.TimeInterval[], token: string) => Promise<Calendars.Response>;
     AddUserExceptionDate: (exception_date: string, recurrence_type: string, interval: Calendars.TimeInterval, is_full_day: boolean, is_available: boolean, token: string) => Promise<Calendars.Response>;
     // DO NOT IMPLEMENT DELETE FUNCTION, API DOES NOT HAVE IT

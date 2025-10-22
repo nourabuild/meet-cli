@@ -13,6 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "icon": {
+        "dark": "./assets/app.icon/app-dark.png",
+        "light": "./assets/app.icon/app-light.png",
+        "tinted": "./assets/app.icon/app-tinted.png"
+      },
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.noura",
       "infoPlist": {

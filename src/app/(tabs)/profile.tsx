@@ -10,7 +10,6 @@ import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 import { theme } from "@/styles/theme";
 
 import { FollowRepo } from "@/repo";
-import Navbar from "@/lib/utils/navigation-bar";
 
 // -------------------------------
 // State Management
@@ -192,18 +191,6 @@ export default function ProfileScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor }]}>
-            <Navbar
-                backgroundColor={backgroundColor}
-            >
-                <View style={styles.header}>
-                    <Text style={[styles.title, { color: textColor }]}>{currentUser?.account || 'Profile'}</Text>
-                    <TouchableOpacity
-                        onPress={() => router.push('/profile-settings')}
-                    >
-                        <Feather name="settings" size={24} color={textColor} />
-                    </TouchableOpacity>
-                </View>
-            </Navbar>
 
             <ScrollView
                 style={styles.scrollView}
@@ -243,7 +230,7 @@ export default function ProfileScreen() {
                                 <View style={styles.statsRow}>
                                     <TouchableOpacity
                                         style={styles.statItem}
-                                        onPress={() => router.push('/follow-details?tab=followers')}
+                                        onPress={() => router.push('/show-follow?tab=followers')}
                                         activeOpacity={0.7}
                                     >
                                         <Text style={[styles.statNumber, { color: textColor }]}>
@@ -253,7 +240,7 @@ export default function ProfileScreen() {
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={styles.statItem}
-                                        onPress={() => router.push('/follow-details?tab=following')}
+                                        onPress={() => router.push('/show-follow?tab=following')}
                                         activeOpacity={0.7}
                                     >
                                         <Text style={[styles.statNumber, { color: textColor }]}>
@@ -292,15 +279,15 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    title: {
-        fontSize: 28,
-        fontWeight: "bold",
-    },
+    // header: {
+    //     flexDirection: 'row',
+    //     justifyContent: 'space-between',
+    //     alignItems: 'center',
+    // },
+    // title: {
+    //     fontSize: 28,
+    //     fontWeight: "bold",
+    // },
     scrollView: {
         flex: 1,
     },

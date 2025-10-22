@@ -6,44 +6,40 @@ export namespace Meetings {
     export type Create = {
         meeting: {
             title: string;
-            type_id: string;
+            appointed_at: string;
             status?: string;
-            start_time?: string;
-            location?: string;
-            location_url?: string;
-            appointed_by?: string | null;
-            assigned_to?: string | null;
         },
         participants: {
             user_id: string;
+        }[];
+        unverified_participants?: {
+            name: string;
+            email: string;
         }[];
     }
 
     export type MeetingCreateInfo = Create['meeting'];
     export type ParticipantCreateInfo = Create['participants'][0];
 
-    export type MeetingType = {
-        id: string;
-        title: string;
-        created_at: string;
-        updated_at: string;
-    };
-
     export type Meeting = {
         id: string;
         title: string;
-        appointed_by: string | null;
-        assigned_to: string | null;
-        owner_id: string;
-        type_id: string;
         status: string;
-        start_time: string;
-        location: string;
-        location_url: string;
+        appointed_at: string;
+        created_by: string;
         created_at: string;
         updated_at: string;
-        meeting_type: MeetingType;
         participants: Participant[];
+        unverified_participants: UnverifiedParticipant[];
+        // Legacy fields kept optional for backward compatibility with older API responses
+        location?: string | null;
+        location_url?: string | null;
+        meeting_type?: { title: string };
+        start_time?: string;
+        owner_id?: string;
+        appointed_by?: string | null;
+        assigned_to?: string | null;
+        type_id?: string;
     };
 
     export type Participant = {
@@ -56,6 +52,14 @@ export namespace Meetings {
         user: Users.User;
     };
 
+    export type UnverifiedParticipant = {
+        id: string;
+        meeting_id: string;
+        name: string;
+        email: string;
+        created_at: string;
+        updated_at: string;
+    };
 
     export type FieldError = {
         field: string;
@@ -77,8 +81,6 @@ export namespace Meetings {
     // Form validation types
     export type ValidationErrors = {
         title?: string;
-        type?: string;
-        location?: string;
         date?: string;
         participants?: string;
     };
@@ -90,26 +92,6 @@ export namespace Meetings {
         }
         if (title.trim().length < 3) {
             return 'Meeting title must be at least 3 characters long';
-        }
-        return undefined;
-    };
-
-    export const validateType = (type: string): string | undefined => {
-        if (!type.trim()) {
-            return 'Meeting type is required';
-        }
-        if (type.trim().length < 2) {
-            return 'Meeting type must be at least 2 characters long';
-        }
-        return undefined;
-    };
-
-    export const validateLocation = (location: string): string | undefined => {
-        if (!location.trim()) {
-            return 'Location is required';
-        }
-        if (location.trim().length < 2) {
-            return 'Location must be at least 2 characters long';
         }
         return undefined;
     };
@@ -133,8 +115,7 @@ export namespace Meetings {
 
     export const validateMeetingForm = (data: {
         title: string;
-        type: string;
-        location: string;
+        appointedAt?: Date;
         date?: Date;
         participants?: any[];
         currentUserId?: string;
@@ -144,13 +125,10 @@ export namespace Meetings {
         const titleError = validateTitle(data.title);
         if (titleError) errors.title = titleError;
 
-        const typeError = validateType(data.type);
-        if (typeError) errors.type = typeError;
-
-        const locationError = validateLocation(data.location);
-        if (locationError) errors.location = locationError;
-
-        if (data.date) {
+        if (data.appointedAt) {
+            const dateError = validateDate(data.appointedAt);
+            if (dateError) errors.date = dateError;
+        } else if (data.date) {
             const dateError = validateDate(data.date);
             if (dateError) errors.date = dateError;
         }
@@ -301,27 +279,39 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
         },
 
         CreateMeetingWithParticipants: async (formData: FormData, token: string): Promise<Meetings.Response> => {
-            // Parse participants from JSON string
-            const participantsString = formData.get("participants") as string;
-            const participantIds = participantsString ? JSON.parse(participantsString) : [];
+            const participantsString = formData.get("participants") as string | null;
+            let participantIds: string[] = [];
+            try {
+                participantIds = participantsString ? JSON.parse(participantsString) : [];
+            } catch {
+                participantIds = [];
+            }
 
-            // Prepare request in the expected format
-            // status is always "new" in backend
-            const data = {
+            const unverifiedString = formData.get("unverified_participants") as string | null;
+            let unverifiedParticipants: { name: string; email: string }[] = [];
+            try {
+                unverifiedParticipants = unverifiedString ? JSON.parse(unverifiedString) : [];
+            } catch {
+                unverifiedParticipants = [];
+            }
+
+            const title = String(formData.get("title") ?? "").trim();
+            const appointedAt = String(formData.get("appointed_at") ?? "") || new Date().toISOString();
+
+            const payload: Meetings.Create = {
                 meeting: {
-                    title: formData.get("title"),
-                    type: formData.get("type"),
+                    title,
+                    appointed_at: appointedAt,
                     status: "new",
-                    start_time: formData.get("start_time") || new Date().toISOString(),
-                    location: formData.get("location")
                 },
-                participants: participantIds.map((id: string) => ({ user_id: id }))
+                participants: participantIds.map((id: string) => ({ user_id: id })),
             };
 
-            // Debug log what we're sending to the API
-            console.log('Data being sent to API:', JSON.stringify(data, null, 2));
-            console.log('Participant IDs:', participantIds);
-            console.log('Form data participants string:', participantsString);
+            if (unverifiedParticipants.length > 0) {
+                payload.unverified_participants = unverifiedParticipants;
+            }
+
+            console.log("Data being sent to API:", JSON.stringify(payload, null, 2));
 
             const req = await fetch(`${host}/api/v1/meeting/create`, {
                 method: "POST",
@@ -330,73 +320,95 @@ const NewMeetingRepository = (host: string): MeetingRepository => {
                     "Accept": "application/json",
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify(data),
+                body: JSON.stringify(payload),
             });
 
-            console.log('HTTP Status:', req.status, req.statusText);
-            console.log('Response headers:', req.headers);
+            let responseBody: any = null;
+            try {
+                responseBody = await req.json();
+            } catch (error) {
+                if (!req.ok) {
+                    return {
+                        success: false,
+                        errors: [{ field: "participants", error: "Invalid server response" }],
+                    } satisfies Meetings.Response;
+                }
+            }
 
-            const response = await req.json();
-            console.log('Raw API response:', response);
+            const errorMessages: Record<string, string> = {
+                PARTICIPANTS_UNAVAILABLE: "One or more participants are unavailable at the selected time. Please choose a different slot or confirm their availability.",
+                MUST_ADD_PARTICIPANT: "At least one participant besides yourself is required.",
+                MUST_ADD_PARTICIPANTS: "At least one participant besides yourself is required.",
+                CANNOT_ADD_YOURSELF: "You are automatically included as the owner; please remove yourself from the participant list.",
+                MUST_BE_IN_FUTURE: "Meeting time must be set in the future.",
+            };
 
-            const errorMessages = {
-                PARTICIPANTS_UNAVAILABLE: "One or more participants are unavailable at the selected time. Please choose a different time or check participant availability.",
-                VALIDATION_TITLE_TOO_SHORT: "Title is too short",
-                VALIDATION_TYPE_TOO_SHORT: "Meeting type is too short",
-                VALIDATION_TYPE_REQUIRED: "Meeting type is required",
-                VALIDATION_STATUS_INVALID: "Status is invalid",
-                VALIDATION_LOCATION_TOO_SHORT: "Location is too short",
-                VALIDATION_START_TIME_INVALID: "Start time is invalid",
-                VALIDATION_MEETING_REQUIRED: "Meeting type is required",
-                CANNOT_ADD_YOURSELF: "Cannot add yourself as a participant",
-                MUST_ADD_PARTICIPANTS: "Must add at least one participant",
-            } as const;
-
-            // THERE MUST NEVER BE FIELD GENERAL
-
-            if (!req.ok) {
-                let processedErrors: Meetings.FieldError[] = [];
-
-                if (response.errors && typeof response.errors === 'string') {
-                    // Handle single error string format like "PARTICIPANTS_UNAVAILABLE"
-                    const friendlyMessage = errorMessages[response.errors as keyof typeof errorMessages] || response.errors;
-                    // Map specific error codes to appropriate fields, avoid "general"
-                    let field = "participants"; // Default field for most errors
-                    if (response.errors.includes("TITLE")) field = "title";
-                    else if (response.errors.includes("TYPE")) field = "type";
-                    else if (response.errors.includes("LOCATION")) field = "location";
-                    else if (response.errors.includes("START_TIME")) field = "start_time";
-                    
-                    processedErrors = [{ field, error: friendlyMessage }];
-                } else if (response.errors && typeof response.errors === 'object') {
-                    // Handle object format like {"title": "VALIDATION_TITLE_TOO_SHORT"}
-                    processedErrors = Object.entries(response.errors).map(([field, errorCode]) => ({
-                        field,
-                        error: errorMessages[errorCode as keyof typeof errorMessages] || errorCode
-                    }));
+            const normalizeFieldErrors = (detail: unknown): Meetings.FieldError[] => {
+                if (detail == null) {
+                    return [{ field: "participants", error: "Failed to create meeting." }];
                 }
 
+                if (typeof detail === "string") {
+                    const message = errorMessages[detail] ?? detail;
+                    const field = detail.includes("TITLE")
+                        ? "title"
+                        : detail.includes("TIME")
+                            ? "appointed_at"
+                            : "participants";
+                    return [{ field, error: message }];
+                }
+
+                if (Array.isArray(detail)) {
+                    return detail.flatMap((entry) => normalizeFieldErrors(entry));
+                }
+
+                if (typeof detail === "object") {
+                    const record = detail as Record<string, unknown>;
+
+                    if (typeof record.error === "string") {
+                        let message = errorMessages[record.error] ?? record.error;
+                        if (Array.isArray(record.users) && record.users.length > 0) {
+                            const ids = record.users
+                                .map((user) => {
+                                    if (user && typeof user === "object") {
+                                        return (user as Record<string, unknown>).user_id ?? (user as Record<string, unknown>).id;
+                                    }
+                                    return undefined;
+                                })
+                                .filter(Boolean)
+                                .join(", ");
+                            if (ids) {
+                                message += ` (affected users: ${ids})`;
+                            }
+                        }
+                        return [{ field: "participants", error: message }];
+                    }
+
+                    const entries = Object.entries(record);
+                    if (entries.length) {
+                        return entries.map(([field, value]) => ({
+                            field,
+                            error: typeof value === "string" ? (errorMessages[value] ?? value) : JSON.stringify(value),
+                        }));
+                    }
+                }
+
+                return [{ field: "participants", error: "Failed to create meeting." }];
+            };
+
+            if (!req.ok) {
+                const detail = responseBody?.detail ?? responseBody;
                 return {
                     success: false,
-                    errors: processedErrors,
+                    errors: normalizeFieldErrors(detail),
                 } satisfies Meetings.Response;
             }
 
-            if (response.errors?.length) {
-                return {
-                    success: false,
-                    errors: response.errors.map(({ field, error }: Meetings.FieldError) => ({
-                        field,
-                        error: errorMessages[error as keyof typeof errorMessages] ?? error,
-                    })),
-                } satisfies Meetings.Response;
-            }
-
+            const successPayload = responseBody?.data ?? responseBody;
             return {
                 success: true,
-                data: response,
+                data: successPayload,
             } satisfies Meetings.Response;
-
         },
 
 

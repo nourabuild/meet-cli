@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import React, { useEffect, useReducer, useRef, useState } from 'react';
 import {
     View,
     Text,
@@ -8,13 +8,24 @@ import {
     TextInput,
     ScrollView,
     Alert,
+    useColorScheme,
+    // Switch,
 } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { CalendarRepo } from '@/repo';
 import * as SecureStore from 'expo-secure-store';
-import * as Localization from 'expo-localization';
 import { useThemeColor } from '@/lib/hooks/theme/useThemeColor';
 import { Calendars } from '@/repo/calendars';
-import Navbar from '@/lib/utils/navigation-bar';
+import { theme } from '@/styles/theme';
+import {
+    getLocaleInfo,
+    DAYS_OF_WEEK,
+    normalizeTimeString,
+    toUtcTimeString,
+    fromUtcTimeToLocal,
+    formatExceptionDateForLocale,
+    getDeviceTimeZone,
+} from '@/lib/utils/format';
 
 // -------------------------------
 // State Management
@@ -36,6 +47,8 @@ function availabilityReducer(
         | { type: 'UPDATE_TIME'; payload: { dayId: number; field: 'start_time' | 'end_time'; value: string } }
         | { type: 'ADD_TIME'; payload: { dayId: number; start_time?: string; end_time?: string } }
         | { type: 'REMOVE_TIME'; payload: { dayId: number; index: number } }
+        | { type: 'CLEAR_DAY'; payload: number }
+        | { type: 'SET_DAY_INTERVALS'; payload: { dayId: number; intervals: Calendars.TimeInterval[] } }
 ) {
     switch (action.type) {
         case 'SET_SCHEDULE':
@@ -75,6 +88,17 @@ function availabilityReducer(
                 occurrence += 1;
                 return occurrence !== action.payload.index;
             });
+        }
+        case 'CLEAR_DAY':
+            return state.filter(item => item.day_of_week !== action.payload);
+        case 'SET_DAY_INTERVALS': {
+            const withoutDay = state.filter(item => item.day_of_week !== action.payload.dayId);
+            const replacements = action.payload.intervals.map(interval => ({
+                day_of_week: action.payload.dayId,
+                start_time: interval.start_time,
+                end_time: interval.end_time,
+            })) as Calendars.Availability[];
+            return [...withoutDay, ...replacements];
         }
         default:
             return state;
@@ -118,32 +142,35 @@ function exceptionReducer(
 
 // -------------------------------------------------
 
-const DAYS_OF_WEEK = [
-    { id: 0, name: 'SUN', label: 'Sunday' },
-    { id: 1, name: 'MON', label: 'Monday' },
-    { id: 2, name: 'TUE', label: 'Tuesday' },
-    { id: 3, name: 'WED', label: 'Wednesday' },
-    { id: 4, name: 'THU', label: 'Thursday' },
-    { id: 5, name: 'FRI', label: 'Friday' },
-    { id: 6, name: 'SAT', label: 'Saturday' },
-];
+type SettingsState =
+    | { status: "idle" }
+    | { status: "loading" }
+    | { status: "error"; error: string }
+    | { status: "success"; data: Calendars.UserSettings };
 
-const getDayLabel = (dayOfWeek: number): string => {
-    return DAYS_OF_WEEK.find(day => day.id === dayOfWeek)?.label!;
+type SettingsFormState = {
+    maxDaysToBook: string;
+    minDaysToBook: string;
+    delayBetweenMeetings: string;
+    timezone: string;
 };
 
-const convertUtcToLocalHHMM = (time: string): string => {
-    const match = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/.exec(time ?? '');
-    if (!match) return time;
+const buildGroupedAvailability = (items: Calendars.Availability[]): Record<number, Calendars.TimeInterval[]> => {
+    const grouped: Record<number, Calendars.TimeInterval[]> = {
+        0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [],
+    };
 
-    const [, hour, minute] = match;
-    const reference = new Date();
-    reference.setUTCHours(Number(hour), Number(minute), 0, 0);
+    for (const item of items) {
+        const { start_time, end_time } = item;
+        if (!start_time || !end_time) continue;
+        const normalizedDay = ((item.day_of_week % 7) + 7) % 7;
+        if (!grouped[normalizedDay]) {
+            grouped[normalizedDay] = [];
+        }
+        grouped[normalizedDay].push({ start_time, end_time });
+    }
 
-    const localHours = reference.getHours().toString().padStart(2, '0');
-    const localMinutes = reference.getMinutes().toString().padStart(2, '0');
-
-    return `${localHours}:${localMinutes}`;
+    return grouped;
 };
 
 
@@ -172,6 +199,12 @@ export default function AvailabilityScreen() {
     const backgroundColor = useThemeColor({}, 'background');
     const textColor = useThemeColor({}, 'text');
     const cardColor = useThemeColor({}, 'card');
+    const borderColor = useThemeColor({}, 'border');
+    const colorScheme = useColorScheme();
+    const isDarkMode = colorScheme === 'dark';
+    const scheduleInputBackground = isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(15, 23, 42, 0.06)';
+    const scheduleInputBorder = isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(15, 23, 42, 0.12)';
+    const unavailableTextColor = isDarkMode ? '#9CA3AF' : '#6B7280';
 
     const [availability, dispatchAvailability] = useReducer(availabilityReducer, []);
     const [availabilityState, setAvailabilityState] = useReducer(
@@ -185,6 +218,19 @@ export default function AvailabilityScreen() {
     );
     const exceptionsBeforeEdit = useRef<Calendars.Exceptions[] | null>(null);
 
+    const [settingsState, setSettingsState] = useState<SettingsState>({ status: "idle" });
+    const [isSavingSettings, setIsSavingSettings] = useState(false);
+    const [isEditingSettings, setIsEditingSettings] = useState(false);
+    const [settingsForm, setSettingsForm] = useState<SettingsFormState>(() => {
+        const timezone = getDeviceTimeZone() ?? 'UTC';
+        return {
+            maxDaysToBook: '',
+            minDaysToBook: '',
+            delayBetweenMeetings: '',
+            timezone,
+        };
+    });
+
     // Edit mode toggles now inside reducers
 
     // Simple local state for adding exception date
@@ -194,6 +240,8 @@ export default function AvailabilityScreen() {
     const [exceptionIsAvailable, setExceptionIsAvailable] = useState(false);
     const [exceptionIsFullDay, setExceptionIsFullDay] = useState(false);
 
+    const localeInfo = getLocaleInfo();
+    const isEditing = availabilityState.status === 'editing';
     // Helpers: time formatting and validation
     const formatPartialTime = (input: string): string => {
         const digits = input.replace(/\D/g, '').slice(0, 4);
@@ -204,6 +252,122 @@ export default function AvailabilityScreen() {
 
     const isValidTime = (t: string): boolean => {
         return /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+    };
+
+    const loadUserSettings = async () => {
+        setSettingsState({ status: "loading" });
+        try {
+            const token = await SecureStore.getItemAsync('access_token');
+            if (!token) {
+                setSettingsState({ status: "error", error: "No authentication token found" });
+                return;
+            }
+
+            const response = await CalendarRepo.GetUserSettings(token);
+            if (!response.success) {
+                const message = response.errors?.[0]?.error || "Failed to load scheduling preferences";
+                setSettingsState({ status: "error", error: message });
+                return;
+            }
+
+            const data = response.data;
+            const fallbackTimezone =
+                localeInfo.timeZone
+                ?? getDeviceTimeZone()
+                ?? 'UTC';
+            setSettingsForm({
+                maxDaysToBook: String(data.max_days_to_book ?? 0),
+                minDaysToBook: String(data.min_days_to_book ?? 0),
+                delayBetweenMeetings: String(data.delay_between_meetings ?? 0),
+                timezone: data.timezone ?? fallbackTimezone,
+            });
+            setSettingsState({ status: "success", data });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to load scheduling preferences";
+            setSettingsState({ status: "error", error: message });
+        }
+    };
+
+    const handleSettingsChange = (field: keyof SettingsFormState, value: string) => {
+        setSettingsForm((prev) => ({ ...prev, [field]: value }));
+        setSettingsState((prev) => (prev.status === "error" ? { status: "idle" } : prev));
+    };
+
+    // const handleApplyDeviceTimezone = () => {
+    //     const tz =
+    //         localeInfo.timeZone
+    //         ?? Localization.getCalendars?.()[0]?.timeZone
+    //         ?? 'UTC';
+    //     setSettingsForm((prev) => ({ ...prev, timezone: tz }));
+    //     setSettingsState((prev) => (prev.status === "error" ? { status: "idle" } : prev));
+    // };
+
+    const handleSaveSettings = async () => {
+        setSettingsState((prev) => (prev.status === "error" ? { status: "idle" } : prev));
+        setIsSavingSettings(true);
+        try {
+            const token = await SecureStore.getItemAsync('access_token');
+            if (!token) {
+                throw new Error('No authentication token found');
+            }
+
+            const maxDays = Number.parseInt(settingsForm.maxDaysToBook, 10);
+            const minDays = Number.parseInt(settingsForm.minDaysToBook, 10);
+            const delayMinutes = Number.parseInt(settingsForm.delayBetweenMeetings, 10);
+
+            if (Number.isNaN(maxDays) || maxDays < 0) {
+                throw new Error('Availability window must be a non-negative number.');
+            }
+            if (Number.isNaN(minDays) || minDays < 0) {
+                throw new Error('Lead time must be a non-negative number.');
+            }
+            if (minDays > maxDays) {
+                throw new Error('Lead time cannot be greater than availability window.');
+            }
+            if (Number.isNaN(delayMinutes) || delayMinutes < 0) {
+                throw new Error('Buffer time must be a non-negative number.');
+            }
+
+            const timezone = settingsForm.timezone.trim() || localeInfo.timeZone || 'UTC';
+
+            const response = await CalendarRepo.UpsertUserSettings(
+                {
+                    max_days_to_book: maxDays,
+                    min_days_to_book: minDays,
+                    delay_between_meetings: delayMinutes,
+                    timezone,
+                },
+                token,
+            );
+
+            if (!response.success) {
+                const message = response.errors?.[0]?.error || 'Failed to save scheduling preferences';
+                throw new Error(message);
+            }
+
+            const saved = response.data ?? {
+                max_days_to_book: maxDays,
+                min_days_to_book: minDays,
+                delay_between_meetings: delayMinutes,
+                timezone,
+            };
+
+            setSettingsForm({
+                maxDaysToBook: String(saved.max_days_to_book ?? maxDays),
+                minDaysToBook: String(saved.min_days_to_book ?? minDays),
+                delayBetweenMeetings: String(saved.delay_between_meetings ?? delayMinutes),
+                timezone: saved.timezone ?? timezone,
+            });
+
+            setSettingsState({ status: "success", data: saved });
+            setIsEditingSettings(false);
+            Alert.alert('Preferences saved', 'Your scheduling settings have been updated.');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to save scheduling preferences.';
+            setSettingsState({ status: "error", error: message });
+        } finally {
+            setIsSavingSettings(false);
+        }
     };
 
     const getUserWeeklyAvailability = async () => {
@@ -233,11 +397,17 @@ export default function AvailabilityScreen() {
                 }
             }
 
-            const localizedAvailability = availabilityData.map(item => ({
-                ...item,
-                start_time: typeof item.start_time === 'string' ? convertUtcToLocalHHMM(item.start_time) : item.start_time,
-                end_time: typeof item.end_time === 'string' ? convertUtcToLocalHHMM(item.end_time) : item.end_time,
-            }));
+            // Backend returns times in local format, just normalize them
+            const localizedAvailability = availabilityData.map(item => {
+                const start = item.start_time;
+                const end = item.end_time;
+
+                return {
+                    ...item,
+                    start_time: typeof start === 'string' ? normalizeTimeString(start) : start,
+                    end_time: typeof end === 'string' ? normalizeTimeString(end) : end,
+                };
+            });
 
             dispatchAvailability({ type: 'SET_SCHEDULE', payload: localizedAvailability });
             setAvailabilityState({ status: "success", data: localizedAvailability });
@@ -258,6 +428,7 @@ export default function AvailabilityScreen() {
             }
 
             const response = await CalendarRepo.GetUserExceptionDates(token);
+            console.log('[AvailabilityScreen] getUserExceptionDates response', response);
 
             if (!response.success) {
                 throw new Error(response.errors?.[0]?.error || "Failed to fetch exception dates");
@@ -275,11 +446,32 @@ export default function AvailabilityScreen() {
                 }
             }
 
-            const localizedExceptions = exceptionData.map(exception => ({
-                ...exception,
-                start_time: typeof exception.start_time === 'string' ? convertUtcToLocalHHMM(exception.start_time) : exception.start_time,
-                end_time: typeof exception.end_time === 'string' ? convertUtcToLocalHHMM(exception.end_time) : exception.end_time,
-            }));
+            // Backend returns UTC; convert to local for display
+            const localizedExceptions = exceptionData.map((exception) => {
+                const normalizedStart =
+                    typeof exception.start_time === 'string'
+                        ? normalizeTimeString(exception.start_time)
+                        : exception.start_time;
+                const normalizedEnd =
+                    typeof exception.end_time === 'string'
+                        ? normalizeTimeString(exception.end_time)
+                        : exception.end_time;
+
+                const localStart =
+                    typeof normalizedStart === 'string'
+                        ? fromUtcTimeToLocal(exception.date, normalizedStart)
+                        : normalizedStart;
+                const localEnd =
+                    typeof normalizedEnd === 'string'
+                        ? fromUtcTimeToLocal(exception.date, normalizedEnd)
+                        : normalizedEnd;
+
+                return {
+                    ...exception,
+                    start_time: localStart,
+                    end_time: localEnd,
+                } as Calendars.Exceptions;
+            });
 
             dispatchExceptions({ type: 'SET_EXCEPTIONS', payload: localizedExceptions });
             setExceptionState({ status: "success", data: localizedExceptions });
@@ -333,7 +525,21 @@ export default function AvailabilityScreen() {
                 return;
             }
 
-            const interval = { start_time: exceptionStart, end_time: exceptionEnd } as Calendars.TimeInterval;
+            const startUtc = toUtcTimeString(exceptionDate, exceptionStart);
+            const endUtc = toUtcTimeString(exceptionDate, exceptionEnd);
+            const interval = {
+                start_time: startUtc ?? exceptionStart,
+                end_time: endUtc ?? exceptionEnd,
+            } as Calendars.TimeInterval;
+            // console.log('[AvailabilityScreen] addUserExceptionDate payload', {
+            //     exceptionDate,
+            //     recurrence_type: 'single',
+            //     interval,
+            //     exceptionIsFullDay,
+            //     exceptionIsAvailable,
+            //     utcStartIso: toUtcIsoString(exceptionDate, exceptionStart),
+            //     utcEndIso: toUtcIsoString(exceptionDate, exceptionEnd),
+            // });
             const response = await CalendarRepo.AddUserExceptionDate(
                 exceptionDate,
                 'single',
@@ -343,6 +549,7 @@ export default function AvailabilityScreen() {
                 token,
             );
 
+            console.log('[AvailabilityScreen] addUserExceptionDate response', response);
             if (!response.success) {
                 throw new Error(response.errors?.[0]?.error || "Failed to add exception date");
             }
@@ -359,8 +566,10 @@ export default function AvailabilityScreen() {
 
 
     useEffect(() => {
-        getUserWeeklyAvailability();
-        getUserExceptionDates();
+        void loadUserSettings();
+        void getUserWeeklyAvailability();
+        void getUserExceptionDates();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const deleteUserExceptionDate = async (exception: Calendars.Exceptions, index: number) => {
@@ -442,8 +651,8 @@ export default function AvailabilityScreen() {
             for (const e of toAdd) {
                 const is_full_day = !(e.start_time && e.end_time);
                 const interval = {
-                    start_time: e.start_time ?? '00:00',
-                    end_time: e.end_time ?? '00:00',
+                    start_time: !is_full_day ? (toUtcTimeString(e.date, e.start_time ?? '') ?? e.start_time ?? '00:00') : '00:00',
+                    end_time: !is_full_day ? (toUtcTimeString(e.date, e.end_time ?? '') ?? e.end_time ?? '00:00') : '00:00',
                 } as Calendars.TimeInterval;
                 await CalendarRepo.AddUserExceptionDate(
                     e.date,
@@ -490,32 +699,33 @@ export default function AvailabilityScreen() {
     };
 
     // Build view model: group entries by day for rendering/editing intervals
-    const groupedAvailability = useMemo(() => {
-        const byDay: Record<number, Calendars.TimeInterval[]> = {};
-        for (let d = 0; d <= 6; d++) byDay[d] = [];
-        availability.forEach(item => {
-            if (item.start_time && item.end_time) {
-                byDay[item.day_of_week].push({ start_time: item.start_time, end_time: item.end_time });
-            }
-        });
-        return byDay;
-    }, [availability]);
+    const groupedAvailability = buildGroupedAvailability(availability);
 
     const handleAddTime = (dayId: number) => {
         // Update local list to show optimistically
         dispatchAvailability({ type: 'ADD_TIME', payload: { dayId } });
+
         // Persist using API with existing intervals + new default
         const current = groupedAvailability[dayId] ?? [];
         const intervals: Calendars.TimeInterval[] = [...current, { start_time: '09:00', end_time: '17:00' }];
         addUserWeeklyAvailability(dayId, intervals);
     };
 
-    const handleRemoveTime = (dayId: number, index: number) => {
-        dispatchAvailability({ type: 'REMOVE_TIME', payload: { dayId, index } });
-        // Persist with remaining intervals
-        const current = groupedAvailability[dayId] ?? [];
-        const intervals: Calendars.TimeInterval[] = current.filter((_, i) => i !== index);
-        addUserWeeklyAvailability(dayId, intervals);
+    const handleRemoveLastInterval = (dayId: number) => {
+        const intervals = groupedAvailability[dayId] ?? [];
+        if (intervals.length === 0) {
+            return;
+        }
+
+        if (intervals.length === 1) {
+            dispatchAvailability({ type: 'CLEAR_DAY', payload: dayId });
+            addUserWeeklyAvailability(dayId, []);
+            return;
+        }
+
+        const updated = intervals.slice(0, -1);
+        dispatchAvailability({ type: 'SET_DAY_INTERVALS', payload: { dayId, intervals: updated } });
+        addUserWeeklyAvailability(dayId, updated);
     };
 
     const handleUpdateTime = (dayId: number, index: number, field: 'start_time' | 'end_time', value: string) => {
@@ -550,7 +760,43 @@ export default function AvailabilityScreen() {
             console.error('Please enter times as HH:MM');
             return;
         }
+
         addUserWeeklyAvailability(dayId, intervals);
+    };
+
+    const getCopySourceForDay = (dayId: number) => {
+        const current = groupedAvailability[dayId] ?? [];
+        if (current.length > 0) {
+            return { kind: 'current' as const, intervals: current };
+        }
+        for (let offset = 1; offset < 7; offset += 1) {
+            const candidateId = (dayId + 7 - offset) % 7;
+            const candidate = groupedAvailability[candidateId] ?? [];
+            if (candidate.length > 0) {
+                return { kind: 'previous' as const, intervals: candidate };
+            }
+        }
+        return null;
+    };
+
+    const handleCopyFromPreviousDay = (dayId: number) => {
+        const sourceInfo = getCopySourceForDay(dayId);
+        if (!sourceInfo) {
+            return;
+        }
+
+        if (sourceInfo.kind === 'current') {
+            const lastInterval = sourceInfo.intervals[sourceInfo.intervals.length - 1];
+            const clonedInterval = { ...lastInterval };
+            const updatedIntervals = [...sourceInfo.intervals, clonedInterval];
+            dispatchAvailability({ type: 'SET_DAY_INTERVALS', payload: { dayId, intervals: updatedIntervals } });
+            addUserWeeklyAvailability(dayId, updatedIntervals);
+            return;
+        }
+
+        const clonedSet = sourceInfo.intervals.map(interval => ({ ...interval }));
+        dispatchAvailability({ type: 'SET_DAY_INTERVALS', payload: { dayId, intervals: clonedSet } });
+        addUserWeeklyAvailability(dayId, clonedSet);
     };
 
     const handleAddException = () => {
@@ -558,42 +804,11 @@ export default function AvailabilityScreen() {
     };
 
     // ---------------------------------------------
-    // Locale / time formatting helpers (memoized)
+    // Locale / time formatting helpers
     // ---------------------------------------------
-    const localeInfo = useMemo(() => {
-        const locale = Localization.getLocales()[0];
-        const calendar = Localization.getCalendars()[0];
-        return {
-            localeTag: locale?.languageTag,
-            uses24h: calendar?.uses24hourClock ?? true,
-            timeZone: calendar?.timeZone
-        };
-    }, []);
-
-    const formatExceptionDate = useMemo(() => {
-        const localeTag = localeInfo.localeTag ?? 'en-US';
-        const options: Intl.DateTimeFormatOptions = {
-            month: 'short',
-            day: 'numeric',
-            weekday: 'short',
-        };
-        let formatter: Intl.DateTimeFormat | null = null;
-        try {
-            formatter = new Intl.DateTimeFormat(localeTag, options);
-        } catch (e) {
-            formatter = null;
-        }
-
-        return (isoDate: string | null | undefined): string => {
-            if (!isoDate) return 'Invalid date';
-            const parsed = new Date(isoDate);
-            if (Number.isNaN(parsed.getTime())) return 'Invalid date';
-            if (formatter) return formatter.format(parsed);
-            const month = (parsed.getMonth() + 1).toString().padStart(2, '0');
-            const day = parsed.getDate().toString().padStart(2, '0');
-            return `${parsed.getFullYear()}-${month}-${day}`;
-        };
-    }, [localeInfo.localeTag]);
+    const formatExceptionDate = (isoDate: string | null | undefined): string => {
+        return formatExceptionDateForLocale(localeInfo.localeTag, isoDate);
+    };
 
     const formatDisplayInterval = (start: string, end: string): string => {
         // We now store local HH:MM directly; optionally adapt to 12h if device not 24h
@@ -612,11 +827,7 @@ export default function AvailabilityScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor }]}>
-            <Navbar backgroundColor={backgroundColor}>
-                <View style={styles.navbarContent}>
-                    <Text style={[styles.title, { color: textColor }]}>Availability</Text>
-                </View>
-            </Navbar>
+
             <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: 40 }}
@@ -639,16 +850,18 @@ export default function AvailabilityScreen() {
                             <Text style={styles.editLink}>{availabilityState.status === 'editing' ? 'Done' : 'Edit'}</Text>
                         </TouchableOpacity>
                     </View>
-                    <Text style={{ color: textColor }}>
-                        {availabilityState.status === "loading" && "Loading availability..."}
-                        {availabilityState.status === "error" && `Error: ${availabilityState.error}`}
-                        {(availabilityState.status === "success" || availabilityState.status === 'editing') && availability.length === 0 && "No availability set"}
-                    </Text>
+
+                    {availabilityState.status === "loading" && (
+                        <Text style={{ color: textColor }}>Loading availability...</Text>
+                    )}
+                    {availabilityState.status === "error" && (
+                        <Text style={{ color: textColor }}>Error: {availabilityState.error}</Text>
+                    )}
 
                     {(availabilityState.status === "success" || availabilityState.status === 'editing') && (
                         <View>
 
-                            <View style={[styles.itemCard, { backgroundColor: cardColor, marginBottom: 15 }]}>
+                            {/* <View style={[styles.itemCard, { backgroundColor: cardColor, marginBottom: 15 }]}>
                                 <Text style={[styles.dayName, { color: textColor, textAlign: 'center' }]}>
                                     Device Timezone: {Localization.getCalendars()[0]?.timeZone}
                                 </Text>
@@ -664,7 +877,7 @@ export default function AvailabilityScreen() {
                                 <Text style={[styles.dayName, { color: textColor, textAlign: 'center', fontSize: 12 }]}>
                                     Uses 24h: {Localization.getCalendars()[0]?.uses24hourClock ? 'Yes' : 'No'}
                                 </Text>
-                            </View>
+                            </View> */}
 
                             {/* <View style={{ marginBottom: 15 }}>
                                 {DAYS_OF_WEEK.map(day => {
@@ -724,74 +937,134 @@ export default function AvailabilityScreen() {
                                 })}
                             </View> */}
 
-                            {DAYS_OF_WEEK.map(day => {
-                                const intervals = groupedAvailability[day.id] || [];
-                                const isAvailable = intervals.length > 0;
-                                return (
-                                    <View key={day.id} style={[styles.itemCard, { backgroundColor: cardColor }]}>
-                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <Text style={[styles.dayName, { color: textColor }]}>
-                                                {getDayLabel(day.id)}
+                            <View style={styles.scheduleTable}>
+                                {DAYS_OF_WEEK.map((day) => {
+                                    const intervals = groupedAvailability[day.id] || [];
+                                    const isAvailable = intervals.length > 0;
+                                    const copySource = getCopySourceForDay(day.id);
+                                    const canCopy = Boolean(copySource);
+                                    return (
+                                        <View
+                                            key={day.id}
+                                            style={styles.scheduleRow}
+                                        >
+                                            <Text style={[styles.scheduleDayLabel, { color: textColor }]}>
+                                                {day.name}
                                             </Text>
-                                            {/* Show + Add only when editing and there are no intervals */}
-                                            {(availabilityState.status === 'editing' && !isAvailable) && (
-                                                <View style={{ flexDirection: 'row' }}>
-                                                    <TouchableOpacity onPress={() => handleAddTime(day.id)} style={styles.smallButton}>
-                                                        <Text style={styles.smallButtonText}>+ Add</Text>
+                                            <View style={styles.scheduleIntervals}>
+                                                {(() => {
+                                                    // If unavailable, show plain text instead of input fields
+                                                    if (!isAvailable) {
+                                                        return (
+                                                            <View style={[styles.scheduleIntervalRow, { gap: 6 }]}>
+                                                                <Text style={[styles.scheduleUnavailableText, { color: unavailableTextColor }]}>
+                                                                    Unavailable
+                                                                </Text>
+                                                            </View>
+                                                        );
+                                                    }
+
+                                                    // Available: show input fields
+                                                    return intervals.map((interval, idx) => {
+                                                        const editable = isEditing;
+                                                        const startDisplay = interval.start_time;
+                                                        const endDisplay = interval.end_time;
+                                                        const inputBaseStyle = [
+                                                            styles.scheduleTimeInput,
+                                                            !editable && styles.scheduleTimeInputReadOnly,
+                                                            {
+                                                                borderColor: scheduleInputBorder,
+                                                                backgroundColor: scheduleInputBackground,
+                                                                color: textColor,
+                                                            },
+                                                        ];
+                                                        return (
+                                                            <View
+                                                                key={idx}
+                                                                style={[
+                                                                    styles.scheduleIntervalRow,
+                                                                    idx === intervals.length - 1 && styles.scheduleIntervalRowLast,
+                                                                ]}
+                                                            >
+                                                                <TextInput
+                                                                    value={startDisplay}
+                                                                    editable={editable}
+                                                                    selectTextOnFocus={editable}
+                                                                    onChangeText={editable ? (v) => handleUpdateTime(day.id, idx, 'start_time', v) : undefined}
+                                                                    onEndEditing={editable ? () => handleSaveDay(day.id) : undefined}
+                                                                    maxLength={editable ? 5 : 10}
+                                                                    keyboardType={editable ? 'numbers-and-punctuation' : 'default'}
+                                                                    autoCapitalize="none"
+                                                                    autoCorrect={false}
+                                                                    style={inputBaseStyle}
+                                                                />
+                                                                <Text style={[styles.scheduleTimeSeparator, { color: textColor }]}>-</Text>
+                                                                <TextInput
+                                                                    value={endDisplay}
+                                                                    editable={editable}
+                                                                    selectTextOnFocus={editable}
+                                                                    onChangeText={editable ? (v) => handleUpdateTime(day.id, idx, 'end_time', v) : undefined}
+                                                                    onEndEditing={editable ? () => handleSaveDay(day.id) : undefined}
+                                                                    maxLength={editable ? 5 : 10}
+                                                                    keyboardType={editable ? 'numbers-and-punctuation' : 'default'}
+                                                                    autoCapitalize="none"
+                                                                    autoCorrect={false}
+                                                                    style={inputBaseStyle}
+                                                                />
+                                                            </View>
+                                                        );
+                                                    });
+                                                })()}
+                                            </View>
+                                            {isEditing ? (
+                                                <View style={styles.scheduleActions}>
+                                                    <TouchableOpacity
+                                                        accessibilityLabel="Remove time interval"
+                                                        onPress={() => handleRemoveLastInterval(day.id)}
+                                                        style={[
+                                                            styles.scheduleActionButton,
+                                                            !isAvailable && styles.scheduleActionButtonDisabled,
+                                                        ]}
+                                                        disabled={!isAvailable}
+                                                    >
+                                                        <Feather
+                                                            name="x-circle"
+                                                            size={18}
+                                                            color={isAvailable ? textColor : unavailableTextColor}
+                                                        />
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity
+                                                        accessibilityLabel="Add time interval"
+                                                        onPress={() => handleAddTime(day.id)}
+                                                        style={styles.scheduleActionButton}
+                                                    >
+                                                        <Feather name="plus-circle" size={18} color={textColor} />
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity
+                                                        accessibilityLabel="Copy previous availability"
+                                                        onPress={() => handleCopyFromPreviousDay(day.id)}
+                                                        style={[
+                                                            styles.scheduleActionButton,
+                                                            !canCopy && styles.scheduleActionButtonDisabled,
+                                                        ]}
+                                                        disabled={!canCopy}
+                                                    >
+                                                        <Feather name="copy" size={18} color={textColor} />
                                                     </TouchableOpacity>
                                                 </View>
+                                            ) : (
+                                                <View style={styles.scheduleActionsPlaceholder} />
                                             )}
                                         </View>
-                                        {availabilityState.status !== 'editing' && !isAvailable && (
-                                            <Text style={[styles.timeText, { color: textColor }]}>Unavailable</Text>
-                                        )}
-                                        {availabilityState.status !== 'editing' && isAvailable && (
-                                            <View>
-                                                {intervals.map((interval, idx) => (
-                                                    <Text key={idx} style={[styles.timeText, { color: textColor }]}>
-                                                        {formatDisplayInterval(interval.start_time, interval.end_time)}
-                                                    </Text>
-                                                ))}
-                                            </View>
-                                        )}
-                                        {availabilityState.status === 'editing' && intervals.map((interval, idx) => (
-                                            <View key={idx} style={styles.intervalRow}>
-                                                <TextInput
-                                                    value={interval.start_time}
-                                                    onChangeText={(v) => handleUpdateTime(day.id, idx, 'start_time', v)}
-                                                    onEndEditing={() => handleSaveDay(day.id)}
-                                                    placeholder="09:00"
-                                                    placeholderTextColor="#9CA3AF"
-                                                    maxLength={5}
-                                                    style={styles.timeInput}
-                                                />
-                                                <Text style={styles.timeSeparator}>-</Text>
-                                                <TextInput
-                                                    value={interval.end_time}
-                                                    onChangeText={(v) => handleUpdateTime(day.id, idx, 'end_time', v)}
-                                                    onEndEditing={() => handleSaveDay(day.id)}
-                                                    placeholder="17:00"
-                                                    placeholderTextColor="#9CA3AF"
-                                                    maxLength={5}
-                                                    style={styles.timeInput}
-                                                />
-                                                <TouchableOpacity
-                                                    onPress={() => handleRemoveTime(day.id, idx)}
-                                                    style={styles.removeIntervalButton}
-                                                >
-                                                    <Text style={styles.removeIntervalButtonText}>Remove</Text>
-                                                </TouchableOpacity>
-                                            </View>
-                                        ))}
-                                    </View>
-                                );
-                            })}
+                                    );
+                                })}
+                            </View>
                         </View>
                     )}
                 </View>
 
                 {/* Exceptions Section */}
-                <View style={styles.section}>
+                {/* <View style={styles.section}>
                     <View style={styles.sectionHeaderRow}>
                         <Text style={[styles.sectionTitle, { color: textColor }]}>Exception Dates</Text>
                         <TouchableOpacity
@@ -853,13 +1126,25 @@ export default function AvailabilityScreen() {
                                 />
                             </View>
                         )}
-                        <View style={{ flexDirection: 'row', marginTop: 8 }}>
-                            <TouchableOpacity onPress={() => setExceptionIsFullDay(v => !v)} style={styles.toggleButton}>
-                                <Text style={styles.toggleButtonText}>{exceptionIsFullDay ? 'Full Day: Yes' : 'Full Day: No'}</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => setExceptionIsAvailable(v => !v)} style={styles.toggleButton}>
-                                <Text style={styles.toggleButtonText}>{exceptionIsAvailable ? 'Available' : 'Unavailable'}</Text>
-                            </TouchableOpacity>
+                        <View style={{ marginTop: 12, gap: 12 }}>
+                            <View style={styles.switchRow}>
+                                <Text style={[styles.switchLabel, { color: textColor }]}>All day</Text>
+                                <Switch
+                                    value={exceptionIsFullDay}
+                                    onValueChange={setExceptionIsFullDay}
+                                    trackColor={{ false: '#D1D5DB', true: '#3B82F6' }}
+                                    thumbColor="#FFFFFF"
+                                />
+                            </View>
+                            <View style={styles.switchRow}>
+                                <Text style={[styles.switchLabel, { color: textColor }]}>Free/busy</Text>
+                                <Switch
+                                    value={!exceptionIsAvailable}
+                                    onValueChange={(value) => setExceptionIsAvailable(!value)}
+                                    trackColor={{ false: '#D1D5DB', true: '#3B82F6' }}
+                                    thumbColor="#FFFFFF"
+                                />
+                            </View>
                         </View>
                         <TouchableOpacity onPress={handleAddException} style={styles.saveDayButton}>
                             <Text style={styles.saveDayButtonText}>Add Exception</Text>
@@ -892,8 +1177,102 @@ export default function AvailabilityScreen() {
                             )}
                         </View>
                     ))}
+                </View> */}
+
+                {/* Booking Preferences */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeaderRow}>
+                        <Text style={[styles.sectionTitle, styles.sectionTitleInline, { color: textColor }]}>Booking Preferences</Text>
+                        <TouchableOpacity
+                            onPress={() => setIsEditingSettings(!isEditingSettings)}
+                        >
+                            <Text style={styles.editLink}>{isEditingSettings ? 'Done' : 'Edit'}</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <View style={styles.settingsList}>
+                        <View style={styles.settingsRow}>
+                            <Text style={[styles.settingsLabel, { color: textColor }]}>Lead time (days) / min</Text>
+                            <TextInput
+                                style={[styles.settingsInput, { color: textColor, borderColor }]}
+                                keyboardType="number-pad"
+                                value={settingsForm.minDaysToBook}
+                                onChangeText={(value) => handleSettingsChange('minDaysToBook', value)}
+                                placeholder="0"
+                                placeholderTextColor={theme.colorGrey}
+                                editable={isEditingSettings}
+                            />
+                        </View>
+                        <View style={styles.settingsRow}>
+                            <Text style={[styles.settingsLabel, { color: textColor }]}>Availability window (days) / max</Text>
+                            <TextInput
+                                style={[styles.settingsInput, { color: textColor, borderColor }]}
+                                keyboardType="number-pad"
+                                value={settingsForm.maxDaysToBook}
+                                onChangeText={(value) => handleSettingsChange('maxDaysToBook', value)}
+                                placeholder="0"
+                                placeholderTextColor={theme.colorGrey}
+                                editable={isEditingSettings}
+                            />
+                        </View>
+                        <View style={styles.settingsRow}>
+                            <Text style={[styles.settingsLabel, { color: textColor }]}>Buffer time (minutes) / delay</Text>
+                            <TextInput
+                                style={[styles.settingsInput, { color: textColor, borderColor }]}
+                                keyboardType="number-pad"
+                                value={settingsForm.delayBetweenMeetings}
+                                onChangeText={(value) => handleSettingsChange('delayBetweenMeetings', value)}
+                                placeholder="0"
+                                placeholderTextColor={theme.colorGrey}
+                                editable={isEditingSettings}
+                            />
+                        </View>
+                        <View style={styles.settingsRow}>
+                            <Text style={[styles.settingsLabel, { color: textColor }]}>Timezone (IANA)</Text>
+                            <TextInput
+                                style={[styles.settingsInput, { color: textColor, borderColor }]}
+                                value={settingsForm.timezone}
+                                onChangeText={(value) => handleSettingsChange('timezone', value)}
+                                placeholder="Timezone"
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                placeholderTextColor={theme.colorGrey}
+                                editable={isEditingSettings}
+                            />
+                        </View>
+                        {/* <TouchableOpacity
+                            onPress={handleApplyDeviceTimezone}
+                            style={[styles.settingsTimezoneButton, { borderColor }]}
+                        >
+                            <Text style={[styles.settingsTimezoneButtonText, { color: textColor }]}>
+                                Use device timezone ({localeInfo.timeZone ?? 'device default'})
+                            </Text>
+                        </TouchableOpacity> */}
+                        {settingsState.status === "error" && (
+                            <Text style={styles.settingsErrorText}>{settingsState.error}</Text>
+                        )}
+                        {settingsState.status === "loading" && !isSavingSettings && (
+                            <Text style={styles.settingsHelperText}>Loading preferences…</Text>
+                        )}
+                        {isEditingSettings && (
+                            <TouchableOpacity
+                                style={[
+                                    styles.settingsSaveButton,
+                                    { backgroundColor: theme.colorNouraBlue },
+                                    isSavingSettings && styles.settingsSaveButtonDisabled,
+                                ]}
+                                onPress={handleSaveSettings}
+                                disabled={isSavingSettings}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={styles.settingsSaveButtonText}>
+                                    {isSavingSettings ? 'Saving…' : 'Save Preferences'}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
             </ScrollView>
+
         </View>
     );
 }
@@ -902,12 +1281,12 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    navbarContent: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingVertical: 0,
-    },
+    // navbarContent: {
+    //     flexDirection: 'row',
+    //     justifyContent: 'space-between',
+    //     alignItems: 'center',
+    //     paddingVertical: 0,
+    // },
     // titleRow: {
     //     flexDirection: 'row',
     //     paddingHorizontal: 20,
@@ -915,154 +1294,240 @@ const styles = StyleSheet.create({
     //     alignItems: 'center',
     //     paddingVertical: 0,
     // },
-    title: {
-        fontSize: 28,
-        paddingBottom: 10,
-        fontWeight: '700',
-    },
+    // title: {
+    //     fontSize: 28,
+    //     paddingBottom: 10,
+    //     fontWeight: '700',
+    // },
     editLink: {
         fontSize: 16,
         fontWeight: '600',
     },
     section: {
-        marginBottom: 30,
+        marginBottom: 0,
         paddingHorizontal: 20,
+    },
+    scheduleTable: {
+    },
+    scheduleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        gap: 12,
+    },
+    scheduleDayLabel: {
+        width: 44,
+        fontSize: 14,
+        fontWeight: '600',
+        textAlign: 'left',
+    },
+    scheduleIntervals: {
+        flex: 1,
+    },
+    scheduleIntervalRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    scheduleIntervalRowLast: {
+        marginBottom: 0,
+    },
+    scheduleTimeInput: {
+        width: 70,
+        height: 36,
+        borderRadius: 8,
+        borderWidth: 1,
+        textAlign: 'center',
+        fontSize: 16,
+        fontWeight: '600',
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+    },
+    scheduleTimeInputReadOnly: {
+        opacity: 0.85,
+    },
+    scheduleTimeSeparator: {
+        fontSize: 16,
+        fontWeight: '600',
+        lineHeight: 20,
+    },
+    scheduleUnavailableText: {
+        fontSize: 14,
+        fontWeight: '600',
+        height: 36,
+        lineHeight: 36,
+    },
+    scheduleActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    scheduleActionButton: {
+        padding: 6,
+        borderRadius: 18,
+    },
+    scheduleActionButtonDisabled: {
+        opacity: 0.35,
+    },
+    scheduleActionsPlaceholder: {
+        width: 124,
+    },
+    settingsList: {
+        marginTop: 12,
+    },
+    settingsRow: {
+        marginBottom: 12,
+    },
+    settingsLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 6,
+    },
+    settingsInput: {
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        fontSize: 16,
+    },
+    // settingsTimezoneButton: {
+    //     borderWidth: 1,
+    //     borderRadius: 8,
+    //     paddingVertical: 10,
+    //     paddingHorizontal: 12,
+    //     marginBottom: 12,
+    // },
+    // settingsTimezoneButtonText: {
+    //     fontSize: 14,
+    //     fontWeight: '500',
+    // },
+    settingsErrorText: {
+        color: '#B91C1C',
+        marginBottom: 8,
+        fontWeight: '500',
+    },
+    settingsHelperText: {
+        marginTop: 8,
+        fontSize: 13,
+        color: '#6B7280',
+    },
+    settingsSaveButton: {
+        borderRadius: 8,
+        paddingVertical: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    settingsSaveButtonDisabled: {
+        opacity: 0.6,
+    },
+    settingsSaveButtonText: {
+        color: '#FFFFFF',
+        fontWeight: '600',
+        fontSize: 16,
     },
     sectionHeaderRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 10,
     },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '600',
-        marginBottom: 10,
     },
     sectionTitleInline: {
-        marginBottom: 0,
     },
-    itemCard: {
-        padding: 15,
-        borderRadius: 8,
-        marginBottom: 10,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    textInput: {
-        borderWidth: 1.5,
-        borderColor: '#D1D5DB',
-        backgroundColor: '#FFFFFF',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 8,
-        color: '#374151',
-        marginBottom: 8,
-    },
-    dayName: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginBottom: 4,
-    },
-    timeText: {
-        fontSize: 14,
-        color: '#666',
-    },
-    intervalRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 8,
-    },
-    timeInput: {
-        fontSize: 16,
-        borderWidth: 1.5,
-        borderColor: '#D1D5DB',
-        backgroundColor: '#FFFFFF',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 8,
-        textAlign: 'center',
-        fontWeight: '500',
-        color: '#374151',
-        minWidth: 60,
-    },
-    timeSeparator: {
-        fontSize: 16,
-        color: '#6B7280',
-        marginHorizontal: 8,
-        fontWeight: '500',
-    },
-    smallButton: {
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        backgroundColor: '#E5E7EB',
-        borderRadius: 6,
-    },
-    smallButtonText: {
-        color: '#111827',
-        fontWeight: '600',
-    },
-    removeButton: {
-        marginLeft: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        backgroundColor: '#FEE2E2',
-        borderRadius: 6,
-    },
-    removeButtonText: {
-        color: '#B91C1C',
-        fontWeight: '600',
-    },
-    saveDayButton: {
-        marginTop: 10,
-        paddingVertical: 10,
-        backgroundColor: '#3B82F6',
-        borderRadius: 8,
-        alignItems: 'center',
-    },
-    saveDayButtonText: {
-        color: '#FFFFFF',
-        fontWeight: '600',
-    },
-    toggleButton: {
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        backgroundColor: '#E5E7EB',
-        borderRadius: 6,
-        marginRight: 8,
-    },
-    toggleButtonText: {
-        color: '#111827',
-        fontWeight: '600',
-    },
-    exceptionDate: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginBottom: 4,
-    },
-    exceptionTime: {
-        fontSize: 14,
-        color: '#666',
-        marginBottom: 4,
-    },
-    exceptionStatus: {
-        fontSize: 14,
-        fontWeight: '500',
-    },
-    removeIntervalButton: {
-        marginLeft: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        backgroundColor: '#F3F4F6',
-        borderRadius: 6,
-        alignSelf: 'center',
-    },
-    removeIntervalButtonText: {
-        color: '#6B7280',
-        fontWeight: '600',
-        fontSize: 12,
-    },
+    // itemCard: {
+    //     padding: 15,
+    //     borderRadius: 8,
+    //     marginBottom: 10,
+    //     shadowColor: '#000',
+    //     shadowOffset: { width: 0, height: 1 },
+    //     shadowOpacity: 0.1,
+    //     shadowRadius: 2,
+    //     elevation: 2,
+    // },
+    // textInput: {
+    //     borderWidth: 1.5,
+    //     borderColor: '#D1D5DB',
+    //     backgroundColor: '#FFFFFF',
+    //     paddingHorizontal: 12,
+    //     paddingVertical: 8,
+    //     borderRadius: 8,
+    //     color: '#374151',
+    //     marginBottom: 8,
+    // },
+    // dayName: {
+    //     fontSize: 16,
+    //     fontWeight: '600',
+    //     marginBottom: 4,
+    // },
+    // intervalRow: {
+    //     flexDirection: 'row',
+    //     alignItems: 'center',
+    //     marginTop: 8,
+    // },
+    // timeInput: {
+    //     fontSize: 16,
+    //     borderWidth: 1.5,
+    //     borderColor: '#D1D5DB',
+    //     backgroundColor: '#FFFFFF',
+    //     paddingHorizontal: 12,
+    //     paddingVertical: 8,
+    //     borderRadius: 8,
+    //     textAlign: 'center',
+    //     fontWeight: '500',
+    //     color: '#374151',
+    //     minWidth: 60,
+    // },
+    // timeSeparator: {
+    //     fontSize: 16,
+    //     color: '#6B7280',
+    //     marginHorizontal: 8,
+    //     fontWeight: '500',
+    // },
+    // removeButton: {
+    //     marginLeft: 8,
+    //     paddingHorizontal: 10,
+    //     paddingVertical: 6,
+    //     backgroundColor: '#FEE2E2',
+    //     borderRadius: 6,
+    // },
+    // removeButtonText: {
+    //     color: '#B91C1C',
+    //     fontWeight: '600',
+    // },
+    // saveDayButton: {
+    //     marginTop: 10,
+    //     paddingVertical: 10,
+    //     backgroundColor: '#3B82F6',
+    //     borderRadius: 8,
+    //     alignItems: 'center',
+    // },
+    // saveDayButtonText: {
+    //     color: '#FFFFFF',
+    //     fontWeight: '600',
+    // },
+    // switchRow: {
+    //     flexDirection: 'row',
+    //     alignItems: 'center',
+    //     justifyContent: 'space-between',
+    // },
+    // switchLabel: {
+    //     fontSize: 16,
+    //     fontWeight: '500',
+    // },
+    // exceptionDate: {
+    //     fontSize: 16,
+    //     fontWeight: '600',
+    //     marginBottom: 4,
+    // },
+    // exceptionTime: {
+    //     fontSize: 14,
+    //     color: '#666',
+    //     marginBottom: 4,
+    // },
+    // exceptionStatus: {
+    //     fontSize: 14,
+    //     fontWeight: '500',
+    // },
 });

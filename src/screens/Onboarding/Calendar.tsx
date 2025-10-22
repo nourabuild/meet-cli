@@ -44,6 +44,10 @@ type CalendarSubmissionState =
     | { status: "error"; error: string }
     | { status: "success" };
 
+type CalendarStepOnboardingProps = {
+    onSuccess?: () => Promise<void> | void;
+};
+
 const initialWeeklySchedule: WeeklySchedule[] = DAYS_OF_WEEK.map(day => ({
     day_of_week: day.id,
     intervals: []
@@ -102,7 +106,7 @@ function weeklyScheduleReducer(state: WeeklySchedule[], action: { type: string; 
     }
 }
 
-export default function OnboardingCalendarScreen() {
+function CalendarStepOnboarding({ onSuccess }: CalendarStepOnboardingProps) {
     const [weeklySchedule, dispatchWeeklySchedule] = useReducer(weeklyScheduleReducer, initialWeeklySchedule);
     const [submissionState, setSubmissionState] = useState<CalendarSubmissionState>({ status: "idle" });
     const { checkOnboardingStatus } = useAuth();
@@ -283,8 +287,12 @@ export default function OnboardingCalendarScreen() {
 
             setSubmissionState({ status: "success" });
 
-            // Refresh onboarding status to trigger automatic navigation
-            await checkOnboardingStatus();
+            const postSuccess = onSuccess ?? checkOnboardingStatus;
+            try {
+                await postSuccess();
+            } catch (postSuccessError) {
+                console.error("Calendar step post-success handler failed:", postSuccessError);
+            }
 
         } catch (error) {
             console.error("Save availability error:", error);
@@ -342,6 +350,8 @@ export default function OnboardingCalendarScreen() {
         </View>
     );
 }
+
+export default CalendarStepOnboarding;
 
 const styles = StyleSheet.create({
     container: {

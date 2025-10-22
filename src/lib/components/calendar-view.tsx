@@ -190,7 +190,7 @@ export default function CalendarView({
                         // Find meetings for this hour and selected date
                         const selectedDateString = selectedDate.toLocaleDateString('en-CA'); // YYYY-MM-DD format
                         const hourMeetings = meetings.filter(meeting => {
-                            const meetingDate = new Date(meeting.start_time);
+                            const meetingDate = new Date(meeting.appointed_at);
                             const meetingDateString = meetingDate.toLocaleDateString('en-CA'); // YYYY-MM-DD format
                             const meetingHour = meetingDate.getHours();
                             return meetingDateString === selectedDateString && meetingHour === hour;
@@ -216,7 +216,7 @@ export default function CalendarView({
                                                 {meeting.title}
                                             </Text>
                                             <Text style={[styles.meetingSlotTime, { color: '#E0E7FF' }]} numberOfLines={1}>
-                                                {new Date(meeting.start_time).toLocaleTimeString('en-US', {
+                                                {new Date(meeting.appointed_at).toLocaleTimeString('en-US', {
                                                     hour: 'numeric',
                                                     minute: '2-digit',
                                                     hour12: true

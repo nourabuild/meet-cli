@@ -8,7 +8,6 @@ import { useReduxSelector } from "@/lib/hooks";
 import { theme } from "@/styles/theme";
 import { FollowRepo } from "@/repo";
 import { Follows } from "@/repo/follows";
-import Navbar from "@/lib/utils/navigation-bar";
 import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 
 type FollowState =
@@ -20,7 +19,7 @@ type FollowState =
 type TabType = 'followers' | 'following';
 
 export default function FollowTabsScreen() {
-    const currentUser = useReduxSelector((state) => state.user);
+    const currentUser = useReduxSelector((state) => state.user?.user);
     const { tab } = useLocalSearchParams<{ tab?: string }>();
 
     const backgroundColor = useThemeColor({}, 'background');
@@ -233,7 +232,7 @@ export default function FollowTabsScreen() {
             <View style={[styles.userItem, { backgroundColor }]}>
                 <TouchableOpacity
                     style={styles.userInfo}
-                    onPress={() => router.push(`/(stacks)/${user.account}`)}
+                    onPress={() => router.push(`/show-user/${user.account}`)}
                     activeOpacity={0.7}
                 >
                     <View style={styles.avatarFallback}>
@@ -351,19 +350,7 @@ export default function FollowTabsScreen() {
     return (
         <View style={[styles.container, { backgroundColor }]}>
             {/* Header */}
-            <Navbar
-                backgroundColor={backgroundColor}
-            >
-                <View style={styles.header}>
-                    <TouchableOpacity
-                        onPress={() => router.back()}
-                    >
-                        <Feather name="arrow-left" size={24} color={textColor} />
-                    </TouchableOpacity>
-                    <Text style={[styles.title, { color: textColor }]}>{currentUser?.account || 'Profile'}</Text>
-                    <View style={styles.headerSpacer} />
-                </View>
-            </Navbar>
+
             {/* Tab Navigation */}
             <View style={[styles.tabContainer, { backgroundColor: cardColor }]}>
                 <TouchableOpacity
@@ -410,21 +397,21 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    header: {
-        flexDirection: 'row',
-        paddingBottom: 10,
-        alignItems: 'center',
+    // header: {
+    //     flexDirection: 'row',
+    //     paddingBottom: 10,
+    //     alignItems: 'center',
 
-    },
-    title: {
-        flex: 1,
-        fontSize: 20,
-        fontWeight: "bold",
-        textAlign: 'center',
-    },
-    headerSpacer: {
-        width: 40,
-    },
+    // },
+    // title: {
+    //     flex: 1,
+    //     fontSize: 20,
+    //     fontWeight: "bold",
+    //     textAlign: 'center',
+    // },
+    // headerSpacer: {
+    //     width: 40,
+    // },
     tabContainer: {
         flexDirection: 'row',
         paddingHorizontal: 20,

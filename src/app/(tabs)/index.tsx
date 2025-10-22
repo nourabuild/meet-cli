@@ -8,7 +8,9 @@ import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 import { theme } from "@/styles/theme";
 import { MeetingRepo } from "@/repo";
 import { Meetings } from "@/repo/meetings";
-import Navbar from "@/lib/utils/navigation-bar";
+import { getDeviceLocale, formatMeetingTime } from '@/lib/utils/format';
+
+const primaryLocale = getDeviceLocale();
 
 // -------------------------------
 // State Management & Grouping
@@ -24,7 +26,7 @@ type MeetingsState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "error"; error: string }
-  | { status: "success"; data: Meetings.Meeting[]; sections: MeetingSection[] };
+  | { status: "success"; data: Meetings.Meeting[] };
 
 // Date grouping utility functions
 const formatDateSection = (date: Date): string => {
@@ -41,7 +43,7 @@ const formatDateSection = (date: Date): string => {
   } else if (meetingDate.getTime() === tomorrowDate.getTime()) {
     return 'Tomorrow';
   } else {
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString(primaryLocale, {
       month: 'short',
       day: 'numeric'
     });
@@ -49,9 +51,9 @@ const formatDateSection = (date: Date): string => {
 };
 
 const groupMeetingsByDate = (meetings: Meetings.Meeting[]): MeetingSection[] => {
-  // Group meetings by their start_time date
+  // Group meetings by their appointed_at date
   const grouped = meetings.reduce((acc, meeting) => {
-    const meetingDate = new Date(meeting.start_time);
+    const meetingDate = new Date(meeting.appointed_at);
     const dateKey = meetingDate.toDateString();
 
     if (!acc[dateKey]) {
@@ -71,10 +73,23 @@ const groupMeetingsByDate = (meetings: Meetings.Meeting[]): MeetingSection[] => 
     .map(group => ({
       title: formatDateSection(group.date),
       data: group.meetings.sort((a, b) =>
-        new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+        new Date(a.appointed_at).getTime() - new Date(b.appointed_at).getTime()
       ),
       count: group.meetings.length
     }));
+};
+
+const getMeetingTypeIcon = (status: string) => {
+  switch (status.toLowerCase()) {
+    case 'approved':
+      return 'check-circle';
+    case 'new':
+      return 'clock';
+    case 'canceled':
+      return 'x-circle';
+    default:
+      return 'calendar';
+  }
 };
 
 export default function HomeScreen() {
@@ -86,9 +101,13 @@ export default function HomeScreen() {
 
   const [meetingsState, setMeetingsState] = useState<MeetingsState>({ status: "idle" });
   const [activeTab, setActiveTab] = useState<string>('Today');
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchMeetings = async () => {
-    setMeetingsState({ status: "loading" });
+  const fetchMeetings = async (options: { silent?: boolean } = {}) => {
+    const { silent } = options;
+    if (!silent) {
+      setMeetingsState({ status: "loading" });
+    }
 
     try {
       // Get access token
@@ -130,14 +149,23 @@ export default function HomeScreen() {
       // Filter to only show approved meetings (for both owned and participated)
       const approvedMeetings = allMeetings.filter(meeting => meeting.status.toLowerCase() === 'approved');
       const sections = groupMeetingsByDate(approvedMeetings);
-      setMeetingsState({ status: "success", data: allMeetings, sections });
+      setMeetingsState({ status: "success", data: approvedMeetings });
+      if (sections.length > 0) {
+        setActiveTab(current =>
+          sections.some(section => section.title === current) ? current : sections[0].title
+        );
+      } else {
+        setActiveTab('Today');
+      }
 
     } catch (error) {
       console.error('Error fetching meetings:', error);
       setMeetingsState({
         status: "error",
-        error: error instanceof Error ? error.message : "Network error. Please check your connection and try again.",
+        error: error instanceof Error ? error.message : String(error || "Network error. Please check your connection and try again."),
       });
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -145,126 +173,33 @@ export default function HomeScreen() {
     fetchMeetings();
   }, []);
 
-  // Update active tab when sections change
-  useEffect(() => {
-    if (meetingsState.status === "success" && meetingsState.sections.length > 0) {
-      // Set the first available tab as active if current active tab doesn't exist
-      const availableTabs = meetingsState.sections.map(s => s.title);
-      if (!availableTabs.includes(activeTab)) {
-        setActiveTab(availableTabs[0]);
-      }
-    }
-  }, [meetingsState, activeTab]);
+  const sections: MeetingSection[] =
+    meetingsState.status === "success" ? groupMeetingsByDate(meetingsState.data) : [];
 
-  const formatMeetingTime = (datetime: string) => {
-    const date = new Date(datetime);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    });
-  };
+  const availableTabs = sections.map(section => ({ title: section.title, count: section.count }));
 
-  const getMeetingTypeIcon = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'approved':
-        return 'check-circle';
-      case 'new':
-        return 'clock';
-      case 'canceled':
-        return 'x-circle';
-      default:
-        return 'calendar';
-    }
-  };
-
-  // Get the active tab's meetings
-  const getActiveMeetings = () => {
-    if (meetingsState.status !== "success") return [];
-    const activeSection = meetingsState.sections.find(section => section.title === activeTab);
+  const activeMeetings = (() => {
+    const activeSection = sections.find(section => section.title === activeTab);
     return activeSection ? activeSection.data : [];
-  };
+  })();
 
-  // Get available tabs from sections
-  const getAvailableTabs = () => {
-    if (meetingsState.status !== "success") return [];
-    return meetingsState.sections.map(section => ({
-      title: section.title,
-      count: section.count
-    }));
-  };
-
-  const renderMeetingCard = ({ item }: { item: Meetings.Meeting }) => (
-    <TouchableOpacity
-      style={[styles.meetingCard, { backgroundColor: cardColor, borderColor }]}
-      onPress={() => router.push(`/meeting-details/${item.id}`)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.meetingHeader}>
-        <View style={styles.meetingHeaderLeft}>
-          <Text style={[styles.meetingTitle, { color: textColor }]}>{item.title}</Text>
-          <Text style={styles.meetingTime}>
-            {formatMeetingTime(item.start_time)}
-          </Text>
-          <Text style={[styles.meetingLocation, { color: textSecondaryColor }]}>
-            {item.location}
-          </Text>
-        </View>
-        <View style={styles.meetingTypeContainer}>
-          <Feather
-            name={getMeetingTypeIcon(item.status)}
-            size={16}
-            color={theme.colorNouraBlue}
-          />
-        </View>
-      </View>
-
-      <Text style={[styles.meetingDescription, { color: textColor }]} numberOfLines={2}>
-        Type: {item.meeting_type.title} • Participants: {item.participants.length}
-      </Text>
-
-      <View style={styles.meetingFooter}>
-        <Text style={[styles.statusText, { color: textColor }]}>
-          Status: {item.status}
-        </Text>
-        <Text style={[styles.createdText, { color: textSecondaryColor }]}>
-          Type: {item.meeting_type.title}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const handleNewPress = () => {
-    router.navigate('/create-meeting');
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchMeetings({ silent: true });
   };
 
   return (
     <View style={[styles.container, { backgroundColor }]}>
-      <Navbar
-        backgroundColor={backgroundColor}
-      >
-        <View style={styles.navbarContent}>
-          <View style={styles.navbarLeft}>
-            <View style={styles.navbarTitleRow}>
-              <Text style={[styles.navbarTitle, { color: textColor }]}>Upcoming</Text>
-              {/* <Feather name="chevron-down" size={20} color={theme.colorBlack} /> */}
-            </View>
-          </View>
-          <TouchableOpacity style={styles.navbarButton} onPress={handleNewPress} accessibilityLabel="Create event">
-            <Feather name="plus" size={22} color={textColor} />
-          </TouchableOpacity>
-        </View>
-      </Navbar>
 
-      {getAvailableTabs().length > 0 && (
+
+      {availableTabs.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.tabScrollView}
           contentContainerStyle={styles.tabContainer}
         >
-          {getAvailableTabs().map((tab, index) => (
+          {availableTabs.map((tab, index) => (
             <TouchableOpacity
               key={tab.title}
               style={[
@@ -288,11 +223,50 @@ export default function HomeScreen() {
 
       {/* Meetings List */}
       <FlatList
-        data={getActiveMeetings()}
-        renderItem={renderMeetingCard}
+        data={activeMeetings}
+        renderItem={({ item }: { item: Meetings.Meeting }) => (
+          <TouchableOpacity
+            style={[styles.meetingCard, { backgroundColor: cardColor, borderColor }]}
+            onPress={() => router.push(`/show-meeting/${item.id}`)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.meetingHeader}>
+              <View style={styles.meetingHeaderLeft}>
+                <Text style={[styles.meetingTitle, { color: textColor }]}>{item.title}</Text>
+                <Text style={styles.meetingTime}>
+                  {formatMeetingTime(item.appointed_at)}
+                </Text>
+              </View>
+              <View style={styles.meetingTypeContainer}>
+                <Feather
+                  name={getMeetingTypeIcon(item.status)}
+                  size={16}
+                  color={theme.colorNouraBlue}
+                />
+              </View>
+            </View>
+
+            <Text style={[styles.meetingDescription, { color: textColor }]} numberOfLines={2}>
+              Participants: {item.participants.length} • Created by: {
+                item.participants?.find(p => p.user_id === item.created_by)?.user.name || 'Unknown'
+              }
+            </Text>
+
+            <View style={styles.meetingFooter}>
+              <Text style={[styles.statusText, { color: textColor }]}>
+                Status: {item.status}
+              </Text>
+              <Text style={[styles.createdText, { color: textSecondaryColor }]}>
+                Scheduled: {formatMeetingTime(item.appointed_at)}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
         ListEmptyComponent={
           <View style={[styles.emptyCard, { backgroundColor: cardColor, borderColor: borderColor }]}>
             <View style={styles.emptyCardInner}>
@@ -302,20 +276,20 @@ export default function HomeScreen() {
               <Text style={[styles.emptyTitleBig, { color: textColor }]}>
                 {meetingsState.status === "loading" ? "Loading Meetings" :
                   meetingsState.status === "error" ? "Error Loading" :
-                    getAvailableTabs().length === 0 ? "No Upcoming Meetings" : `No ${activeTab} Meetings`}
+                    availableTabs.length === 0 ? "No Upcoming Meetings" : `No ${activeTab} Meetings`}
               </Text>
               <Text style={[styles.emptySubtitleCenter, { color: textSecondaryColor }]}>
                 {meetingsState.status === "loading"
                   ? "Please wait while we fetch your meetings."
                   : meetingsState.status === "error"
                     ? meetingsState.error
-                    : getAvailableTabs().length === 0
+                    : availableTabs.length === 0
                       ? "Scheduled meetings relevant to you, regardless of your role as organizer or attendee."
                       : `No meetings scheduled for ${activeTab.toLowerCase()}.`}
               </Text>
 
               {meetingsState.status !== "loading" && (
-                <TouchableOpacity style={[styles.emptyCTAButton, { backgroundColor: cardColor, borderColor: borderColor }]} onPress={handleNewPress}>
+                <TouchableOpacity style={[styles.emptyCTAButton, { backgroundColor: cardColor, borderColor: borderColor }]} onPress={() => router.navigate('/create-meeting')} activeOpacity={0.7}>
                   <Text style={[styles.emptyCTAButtonText, { color: textColor }]}>Create Meeting</Text>
                 </TouchableOpacity>
               )}
@@ -331,41 +305,40 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  navbarContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 0, // Remove all vertical padding
-  },
-  navbarLeft: {
-    flex: 1,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    margin: 0, // Remove all margins
-  },
-  navbarTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    marginRight: 4,
-  },
-  navbarTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  // navbarContent: {
+  //   flexDirection: 'row',
+  //   justifyContent: 'space-between',
+  //   alignItems: 'center',
+  //   paddingVertical: 0, // Remove all vertical padding
+  // },
+  // navbarLeft: {
+  //   flex: 1,
+  //   alignItems: 'flex-start',
+  //   justifyContent: 'center',
+  //   margin: 0, // Remove all margins
+  // },
+  // navbarTitle: {
+  //   fontSize: 28,
+  //   fontWeight: '700',
+  //   marginRight: 4,
+  // },
+  // navbarTitleRow: {
+  //   flexDirection: 'row',
+  //   alignItems: 'center',
+  // },
   // logoIcon: {
   //   width: 32,
   //   height: 32,
   //   margin: 0, // Remove all margins
   // },
-  navbarButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    margin: 0, // Remove all margins
-    padding: 0, // Remove all padding
-
-  },
+  // navbarButton: {
+  //   width: 36,
+  //   height: 36,
+  //   alignItems: 'center',
+  //   justifyContent: 'center',
+  //   margin: 0, // Remove all margins
+  //   padding: 0, // Remove all padding
+  // },
   listContainer: {
     paddingTop: 20, // Adjusted top padding for symmetry with dynamic island
     paddingHorizontal: 20,
@@ -427,11 +400,11 @@ const styles = StyleSheet.create({
     color: theme.colorNouraBlue,
     fontWeight: '600',
   },
-  meetingLocation: {
-    fontSize: 13,
-    fontWeight: '500',
-    marginTop: 2,
-  },
+  // meetingLocation: {
+  //   fontSize: 13,
+  //   fontWeight: '500',
+  //   marginTop: 2,
+  // },
   meetingTypeContainer: {
     backgroundColor: theme.colorLightGrey,
     borderRadius: 20,

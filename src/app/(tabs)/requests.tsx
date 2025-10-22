@@ -8,7 +8,7 @@ import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 import { theme } from '@/styles/theme';
 import { MeetingRepo } from '@/repo';
 import { Meetings } from '@/repo/meetings';
-import Navbar from "@/lib/utils/navigation-bar";
+import { formatMeetingTime } from '@/lib/utils/format';
 
 // -------------------------------
 // State Management
@@ -115,16 +115,6 @@ export default function RequestsScreen() {
 
         fetchAllRequests();
     }, []); // Only run once on mount
-
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
 
     // Get requests data from state
     const requests = requestsState.status === "success" ? requestsState.data : [];
@@ -272,7 +262,7 @@ export default function RequestsScreen() {
         <TouchableOpacity
             style={[styles.requestCard, { backgroundColor: cardColor, borderColor }]}
 
-            onPress={() => router.push(`/meeting-details/${item.meeting_id}`)}
+            onPress={() => router.push(`/show-meeting/${item.meeting_id}`)}
             activeOpacity={0.7}
         >
             {/* Header */}
@@ -281,7 +271,7 @@ export default function RequestsScreen() {
                     <View style={styles.requesterInfo}>
                         <Text style={[styles.requesterName, { color: textColor }]}>{item.meeting.title}</Text>
                         <Text style={[styles.requestTime, { color: textSecondaryColor }]}>
-                            Created {formatDate(item.created_at)}
+                            Created {formatMeetingTime(item.created_at)}
                         </Text>
                     </View>
                 </View>
@@ -308,7 +298,7 @@ export default function RequestsScreen() {
             {/* Meeting Details */}
             <View style={styles.meetingDetails}>
                 <Text style={[styles.meetingDescription, { color: textSecondaryColor }]}>
-                    {item.meeting.meeting_type.title} • Location: {item.meeting.location || 'TBD'}
+                    Scheduled: {formatMeetingTime(item.meeting.appointed_at)}
                 </Text>
 
                 <View style={styles.meetingMeta}>
@@ -317,7 +307,7 @@ export default function RequestsScreen() {
                         <Text style={[styles.metaText, { color: textSecondaryColor }]}>
                             Owner: {
                                 // Find the owner among participants
-                                item.meeting.participants?.find(p => p.user_id === item.meeting.owner_id)?.user.name ||
+                                item.meeting.participants?.find(p => p.user_id === item.meeting.created_by)?.user.name ||
                                 'Unknown'
                             }
                         </Text>
@@ -353,13 +343,7 @@ export default function RequestsScreen() {
     return (
         <View style={[styles.container, { backgroundColor }]}>
             {/* Header */}
-            <Navbar
-                backgroundColor={backgroundColor}
-            >
-                <View style={styles.header}>
-                    <Text style={[styles.title, { color: textColor }]}>Requests</Text>
-                </View>
-            </Navbar>
+
 
             {/* Tab Navigation */}
             <View style={[styles.tabContainer, { backgroundColor: cardColor, borderBottomColor: useThemeColor({}, 'border') }]}>
@@ -420,15 +404,7 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    title: {
-        fontSize: 28,
-        paddingBottom: 10,
-        fontWeight: "bold",
-    },
+
     tabContainer: {
         flexDirection: 'row',
         paddingHorizontal: 20,

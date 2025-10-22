@@ -91,7 +91,7 @@ function LoginScreen() {
 
     return (
         <SafeAreaContainer
-            edges={['bottom']}
+            edges={['top', 'bottom']}
             backgroundColor={backgroundColor}
             style={styles.container}>
             <KeyboardAvoidingView
@@ -106,7 +106,7 @@ function LoginScreen() {
                 >
                     <View style={styles.formContainer}>
                         <NouraImage
-                            source={require("../../../assets/icon.png")}
+                            source={require("../../assets/icon.png")}
                             style={styles.logo}
                             containerStyle={styles.logoContainer}
                             resizeMode="contain"

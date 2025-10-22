@@ -12,6 +12,7 @@ export namespace Calendars {
     export type Availability = {
         id?: string;
         day_of_week: number;
+        weekday?: number;
         start_time: string;
         end_time: string;
         created_at?: string;
@@ -33,12 +34,39 @@ export namespace Calendars {
         id: string;
         calendar_id: string;
         day_of_week: number;
+        weekday?: number;
         start_time: string;
         end_time: string;
         is_available: boolean;
     }
 
+    export type CalendarEntriesData = {
+        entries: CalendarEntry[];
+        exceptions: Exceptions[];
+    };
 
+    export type CalendarEntriesResponse =
+        | {
+            success: true;
+            data: CalendarEntriesData;
+        }
+        | FailureResponse;
+
+    export type UserSettings = {
+        max_days_to_book: number;
+        min_days_to_book: number;
+        delay_between_meetings: number;
+        timezone: string;
+    };
+
+    export type UserSettingsResponse =
+        | {
+            success: true;
+            data: UserSettings;
+        }
+        | FailureResponse;
+
+    export type UserSettingsUpdate = Partial<UserSettings>;
 
     export type OnboardingStatus = {
         completed: boolean;
@@ -59,7 +87,7 @@ export namespace Calendars {
 
     type SuccessResponse = {
         success: true;
-        data: Availability | Availability[] | Exceptions | Exceptions[];
+        data: Availability | Availability[] | Exceptions | Exceptions[] | CalendarEntry | CalendarEntry[];
     };
 
     type FailureResponse = {
@@ -102,10 +130,40 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
             // Normalize various backend shapes into flat intervals
             const normalize = (raw: any): Calendars.Availability[] => {
                 const out: Calendars.Availability[] = [];
-                const tryAdd = (day_of_week: any, start: any, end: any) => {
-                    if (typeof day_of_week === 'number' && typeof start === 'string' && typeof end === 'string') {
-                        out.push({ day_of_week, start_time: start, end_time: end });
+                const resolveDay = (value: any): number | string | undefined => {
+                    if (value == null) return undefined;
+                    if (typeof value === "number" || typeof value === "string") return value;
+                    if (typeof value === "object") {
+                        return value.day_of_week
+                            ?? value.weekday
+                            ?? value.day
+                            ?? value.dayOfWeek
+                            ?? value.dayIndex;
                     }
+                    return undefined;
+                };
+                const tryAdd = (rawDay: any, start: any, end: any) => {
+                    let weekdayValue: number | undefined;
+                    if (typeof rawDay === 'number') {
+                        weekdayValue = rawDay;
+                    } else if (typeof rawDay === 'string') {
+                        const parsed = Number.parseInt(rawDay, 10);
+                        if (!Number.isNaN(parsed)) {
+                            weekdayValue = parsed;
+                        }
+                    }
+
+                    if (weekdayValue == null || typeof start !== 'string' || typeof end !== 'string') {
+                        return;
+                    }
+
+                    const normalizedDay = ((Math.trunc(weekdayValue) % 7) + 6) % 7;
+                    out.push({
+                        day_of_week: normalizedDay,
+                        weekday: Math.trunc(weekdayValue),
+                        start_time: start,
+                        end_time: end,
+                    });
                 };
 
                 const arr = Array.isArray(raw) ? raw
@@ -117,10 +175,11 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                     for (const item of arr) {
                         if (Array.isArray(item?.intervals)) {
                             for (const it of item.intervals) {
-                                tryAdd(item.day_of_week ?? it.day_of_week, it.start_time, it.end_time);
+                                const intervalDay = resolveDay(it) ?? resolveDay(item);
+                                tryAdd(intervalDay, it.start_time, it.end_time);
                             }
                         } else if (typeof item?.start_time === 'string' && typeof item?.end_time === 'string') {
-                            tryAdd(item.day_of_week, item.start_time, item.end_time);
+                            tryAdd(resolveDay(item), item.start_time, item.end_time);
                         }
                     }
                 }
@@ -132,6 +191,187 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                 success: true,
                 data,
             } satisfies Calendars.Response;
+        },
+        GetUserCalendarEntries: async (userId: string, token: string) => {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/availability/${userId}`, {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Accept": "application/json",
+                },
+            });
+
+            let response: any;
+            try {
+                response = await req.json();
+            } catch (e) {
+                return {
+                    success: false,
+                    errors: [{ field: "availability", error: "Invalid server response" }],
+                } satisfies Calendars.CalendarEntriesResponse;
+            }
+
+            if (!req.ok) {
+                const errorMessage = response?.detail
+                    || response?.message
+                    || (typeof response === "string" ? response : undefined)
+                    || "Failed to load availability";
+
+                return {
+                    success: false,
+                    errors: [{ field: "availability", error: errorMessage }],
+                } satisfies Calendars.CalendarEntriesResponse;
+            }
+
+            const normalizeEntries = (raw: any): Calendars.CalendarEntry[] => {
+                const source = Array.isArray(raw)
+                    ? raw
+                    : Array.isArray(raw?.entries)
+                        ? raw.entries
+                        : Array.isArray(raw?.data?.entries)
+                            ? raw.data.entries
+                            : Array.isArray(raw?.data)
+                                ? raw.data
+                                : Array.isArray(raw?.calendar_entries)
+                                    ? raw.calendar_entries
+                                    : [];
+
+                const normalized: Calendars.CalendarEntry[] = [];
+
+                for (const item of source) {
+                    if (!item) {
+                        continue;
+                    }
+
+                    const start = typeof item.start_time === "string"
+                        ? item.start_time
+                        : typeof item.start === "string"
+                            ? item.start
+                            : typeof item.startTime === "string"
+                                ? item.startTime
+                                : undefined;
+
+                    const end = typeof item.end_time === "string"
+                        ? item.end_time
+                        : typeof item.end === "string"
+                            ? item.end
+                            : typeof item.endTime === "string"
+                                ? item.endTime
+                                : undefined;
+
+                    if (typeof start !== "string" || typeof end !== "string") {
+                        continue;
+                    }
+
+                    let dayOfWeek: number | undefined = item.day_of_week ?? item.dayOfWeek ?? item.weekday ?? item.day;
+                    if (typeof dayOfWeek === "string") {
+                        const parsed = Number.parseInt(dayOfWeek, 10);
+                        dayOfWeek = Number.isFinite(parsed) ? parsed : undefined;
+                    } else if (typeof dayOfWeek !== "number" || Number.isNaN(dayOfWeek)) {
+                        if (start.includes("T")) {
+                            const parsedDate = new Date(start);
+                            if (!Number.isNaN(parsedDate.getTime())) {
+                                dayOfWeek = parsedDate.getDay();
+                            }
+                        }
+                    }
+
+                    const isAvailableValue = item.is_available ?? item.isAvailable ?? item.available ?? (item.status === "available");
+                    const calendarId = typeof item.calendar_id === "string"
+                        ? item.calendar_id
+                        : typeof item.calendarId === "string"
+                            ? item.calendarId
+                            : "";
+                    const backendWeekday =
+                        typeof dayOfWeek === "number" && Number.isFinite(dayOfWeek)
+                            ? Math.trunc(dayOfWeek)
+                            : undefined;
+                    const resolvedDay =
+                        typeof backendWeekday === "number"
+                            ? ((backendWeekday % 7) + 6) % 7
+                            : undefined;
+
+                    const entryId = item.id ?? `${start}-${end}-${resolvedDay ?? "na"}`;
+
+                    if (typeof resolvedDay !== "number") {
+                        continue;
+                    }
+
+                    normalized.push({
+                        id: String(entryId),
+                        calendar_id: String(calendarId),
+                        day_of_week: resolvedDay,
+                        weekday: backendWeekday,
+                        start_time: start,
+                        end_time: end,
+                        is_available: Boolean(isAvailableValue ?? true),
+                    });
+                }
+
+                return normalized;
+            };
+
+            const normalizeExceptions = (raw: any): Calendars.Exceptions[] => {
+                const source = Array.isArray(raw)
+                    ? raw
+                    : Array.isArray(raw?.exceptions)
+                        ? raw.exceptions
+                        : Array.isArray(raw?.data?.exceptions)
+                            ? raw.data.exceptions
+                            : Array.isArray(raw?.calendar_exceptions)
+                                ? raw.calendar_exceptions
+                                : [];
+
+                const exceptions: Calendars.Exceptions[] = [];
+                for (const item of source) {
+                    if (!item) {
+                        continue;
+                    }
+
+                    const dateValue = (item.exception_date ?? item.date) as string | undefined;
+                    if (typeof dateValue !== "string") {
+                        continue;
+                    }
+
+                    const start = typeof item.start_time === "string"
+                        ? item.start_time
+                        : typeof item.start === "string"
+                            ? item.start
+                            : typeof item.startTime === "string"
+                                ? item.startTime
+                                : null;
+
+                    const end = typeof item.end_time === "string"
+                        ? item.end_time
+                        : typeof item.end === "string"
+                            ? item.end
+                            : typeof item.endTime === "string"
+                                ? item.endTime
+                                : null;
+
+                    const isAvailableValue = item.is_available ?? item.isAvailable ?? item.available ?? false;
+
+                    exceptions.push({
+                        id: item.id ? String(item.id) : undefined,
+                        date: dateValue,
+                        start_time: start,
+                        end_time: end,
+                        is_available: Boolean(isAvailableValue),
+                    });
+                }
+                return exceptions;
+            };
+
+            const exceptions = normalizeExceptions(response);
+            const entries = normalizeEntries(response);
+
+            return {
+                success: true,
+                data: {
+                    entries,
+                    exceptions,
+                },
+            } satisfies Calendars.CalendarEntriesResponse;
         },
         GetUserExceptionDates: async (token: string) => {
             const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/exceptions`, {
@@ -156,6 +396,12 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                     errors: [{ field: "exceptions", error: response?.message || response?.detail || "Failed to load exception dates" }],
                 } satisfies Calendars.Response;
             }
+
+            console.log('[CalendarRepo] GetUserExceptionDates raw response', {
+                status: req.status,
+                ok: req.ok,
+                body: response,
+            });
 
             const normalize = (raw: any): Calendars.Exceptions[] => {
                 const out: Calendars.Exceptions[] = [];
@@ -235,8 +481,105 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
             } satisfies Calendars.OnboardingResponse;
         },
 
+        GetUserSettings: async (token: string) => {
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/settings`, {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Accept": "application/json",
+                },
+            });
+
+            let response: any;
+            try {
+                response = await req.json();
+            } catch {
+                return {
+                    success: false,
+                    errors: [{ field: "settings", error: "Invalid server response" }],
+                } satisfies Calendars.UserSettingsResponse;
+            }
+
+            if (!req.ok) {
+                const errorMessage =
+                    response?.detail ||
+                    response?.message ||
+                    "Failed to load scheduling preferences";
+
+                return {
+                    success: false,
+                    errors: [{ field: "settings", error: errorMessage }],
+                } satisfies Calendars.UserSettingsResponse;
+            }
+
+            return {
+                success: true,
+                data: response,
+            } satisfies Calendars.UserSettingsResponse;
+        },
+
+        UpsertUserSettings: async (payload: Calendars.UserSettingsUpdate, token: string) => {
+            const normalizedPayload: Record<string, unknown> = {};
+
+            if (payload.max_days_to_book !== undefined) {
+                normalizedPayload.max_days_to_book = Number.isFinite(payload.max_days_to_book)
+                    ? Math.max(0, Math.trunc(payload.max_days_to_book))
+                    : 0;
+            }
+            if (payload.min_days_to_book !== undefined) {
+                normalizedPayload.min_days_to_book = Number.isFinite(payload.min_days_to_book)
+                    ? Math.max(0, Math.trunc(payload.min_days_to_book))
+                    : 0;
+            }
+            if (payload.delay_between_meetings !== undefined) {
+                normalizedPayload.delay_between_meetings = Number.isFinite(payload.delay_between_meetings)
+                    ? Math.max(0, Math.trunc(payload.delay_between_meetings))
+                    : 0;
+            }
+            if (payload.timezone !== undefined) {
+                normalizedPayload.timezone = payload.timezone;
+            }
+
+            const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/settings`, {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(normalizedPayload),
+            });
+
+            let response: any;
+            try {
+                response = await req.json();
+            } catch {
+                if (!req.ok) {
+                    return {
+                        success: false,
+                        errors: [{ field: "settings", error: "Invalid server response" }],
+                    } satisfies Calendars.UserSettingsResponse;
+                }
+            }
+
+            if (!req.ok) {
+                const detail = response?.detail || response?.message || "Failed to save scheduling preferences";
+                return {
+                    success: false,
+                    errors: [{ field: "settings", error: detail }],
+                } satisfies Calendars.UserSettingsResponse;
+            }
+
+            return {
+                success: true,
+                data: response ?? normalizedPayload,
+            } satisfies Calendars.UserSettingsResponse;
+        },
+
         AddUserWeeklyAvailability: async (dayOfWeek: number, intervals: Calendars.TimeInterval[], token: string) => {
+            const weekday = ((Math.trunc(dayOfWeek) % 7) + 1) || 1;
             const data = {
+                weekday,
                 day_of_week: dayOfWeek,
                 intervals: intervals
             };
@@ -265,7 +608,7 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
 
         AddUserExceptionDate: async (
             exception_date: string,
-            recurrence_type: string,
+            _recurrence_type: string,
             interval: Calendars.TimeInterval,
             is_full_day: boolean,
             is_available: boolean,
@@ -273,38 +616,37 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
         ) => {
             const errors: { field: string; error: string }[] = [];
 
-            const data: Record<string, any> = {};
+            const payload: Record<string, any> = {};
             if (!exception_date || typeof exception_date !== 'string') {
-                errors.push({ field: 'exception_date', error: 'Exception date is required' });
+                errors.push({ field: 'date', error: 'Exception date is required' });
             } else {
-                data.exception_date = exception_date;
+                payload.date = exception_date;
             }
 
-            data.is_full_day = Boolean(is_full_day);
-
-            if (!data.is_full_day) {
+            if (is_full_day) {
+                payload.start_time = null;
+                payload.end_time = null;
+            } else {
                 const start = interval?.start_time;
                 const end = interval?.end_time;
                 if (!start || !end) {
-                    errors.push({ field: 'availability', error: 'Start and end times are required for non-full-day exceptions' });
+                    errors.push({ field: 'availability', error: 'Start and end times are required when the exception is not full-day' });
                 } else {
-                    data.start_time = start;
-                    data.end_time = end;
+                    payload.start_time = start;
+                    payload.end_time = end;
                 }
             }
 
-            data.is_available = Boolean(is_available);
-            data.recurrence_type = recurrence_type || 'single';
-
-            // Derive day_of_week from exception_date
-            if (exception_date) {
-                const d = new Date(exception_date);
-                if (!isNaN(d.getTime())) data.day_of_week = d.getDay();
-            }
+            payload.is_available = Boolean(is_available);
 
             if (errors.length > 0) {
                 return { success: false, errors } satisfies Calendars.Response;
             }
+
+            console.log('[CalendarRepo] AddUserExceptionDate payload', {
+                ...payload,
+                tokenPresent: Boolean(token),
+            });
 
             const req = await fetch(`${host}/${API_ROUTE_DOMAIN}/exceptions/add`, {
                 method: 'POST',
@@ -313,7 +655,7 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(data),
+                body: JSON.stringify(payload),
             });
 
             let response: any = {};
@@ -327,6 +669,12 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                     } satisfies Calendars.Response;
                 }
             }
+
+            console.log('[CalendarRepo] AddUserExceptionDate response', {
+                status: req.status,
+                ok: req.ok,
+                body: response,
+            });
 
             if (!req.ok) {
                 return {

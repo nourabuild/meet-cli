@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import * as SecureStore from 'expo-secure-store';
@@ -10,6 +10,7 @@ import { MeetingRepo, UserRepo } from '@/repo';
 import { useReduxSelector } from '@/lib/hooks';
 import SafeAreaContainer from '@/lib/utils/safe-area-container';
 import { useThemeColor } from '@/lib/hooks/theme/useThemeColor';
+import { formatMeetingDate } from '@/lib/utils/format';
 
 // -------------------------------
 // State Management
@@ -24,7 +25,7 @@ type MeetingDetailState =
 export default function MeetingDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const [meetingState, setMeetingState] = useState<MeetingDetailState>({ status: "idle" });
-    const currentUser = useReduxSelector((state) => state.user);
+    const currentUser = useReduxSelector((state) => state.user?.user);
 
     const textColor = useThemeColor({}, 'text');
     const backgroundColor = useThemeColor({}, 'background');
@@ -104,18 +105,6 @@ export default function MeetingDetailScreen() {
             .slice(0, 2);
     };
 
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-            weekday: 'long',
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
-
     const handleParticipantPress = async (account: string) => {
         try {
             const token = await SecureStore.getItemAsync('access_token');
@@ -123,30 +112,27 @@ export default function MeetingDetailScreen() {
                 return;
             }
 
-            // Check if this is the current user
+            const userResponse = await UserRepo.GetByAccount(account, token);
+
             if (account === currentUser?.account) {
-                // Navigate to the profile tab for current user
-                router.dismiss();
-                setTimeout(() => {
-                    router.push('/(tabs)/profile');
-                }, 100);
-            } else {
-                // Fetch user data by account for other users
-                const userResponse = await UserRepo.GetByAccount(account, token);
-                if (userResponse.success) {
-                    // Navigate to dynamic [account] route for other users
-                    router.dismiss();
-                    setTimeout(() => {
-                        router.push(`/${account}`);
-                    }, 100);
-                } else {
-                    console.error('Failed to fetch user data:', userResponse.errors);
-                    // TODO: Show error message to user
-                }
+                return router.push('(tabs)/profile');
             }
+
+            if (userResponse.success) {
+                return router.push({
+                    pathname: 'show-user/[account]',
+                    params: { account },
+                });
+            }
+
+
+
         } catch (error) {
             console.error('Error handling participant press:', error);
-            // TODO: Show error message to user
+            const message = error instanceof Error
+                ? error.message
+                : 'Unable to open participant details. Please try again.';
+            Alert.alert('Error', message);
         }
     };
 
@@ -224,24 +210,12 @@ export default function MeetingDetailScreen() {
     return (
         <SafeAreaContainer edges={['bottom']} backgroundColor={backgroundColor}>
             <View style={[styles.container, { backgroundColor }]}>
-                <View style={[styles.header, { borderBottomColor: borderColor }]}>
-                    <TouchableOpacity onPress={handleGoBack}>
-                        <Feather name="arrow-left" size={24} color={textColor} />
-                    </TouchableOpacity>
-                    <Text style={[styles.title, { color: textColor }]}>Meeting Details</Text>
-                    <TouchableOpacity >
-                        <Text style={styles.editButtonText}>Edit</Text>
-                    </TouchableOpacity>
-                </View>
+
 
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                     {/* Meeting Info */}
                     <View style={[styles.section, { borderBottomColor: borderColor }]}>
                         <Text style={[styles.meetingTitle, { color: textColor }]}>{meeting.title}</Text>
-
-                        <Text style={styles.meetingDescription}>
-                            Type: {meeting.meeting_type?.title || 'N/A'}
-                        </Text>
 
                         <View style={styles.statusBadge}>
                             <Feather
@@ -264,54 +238,36 @@ export default function MeetingDetailScreen() {
                         <View style={styles.detailItem}>
                             <Feather name="calendar" size={20} color={theme.colorNouraBlue} />
                             <View style={styles.detailText}>
-                                <Text style={styles.detailLabel}>Start Time</Text>
-                                <Text style={[styles.detailValue, { color: textColor }]}>{formatDate(meeting.start_time)}</Text>
+                                <Text style={styles.detailLabel}>Scheduled For</Text>
+                                <Text style={[styles.detailValue, { color: textColor }]}>{formatMeetingDate(meeting.appointed_at)}</Text>
                             </View>
                         </View>
-
-                        <View style={styles.detailItem}>
-                            <Feather name="map-pin" size={20} color={theme.colorNouraBlue} />
-                            <View style={styles.detailText}>
-                                <Text style={styles.detailLabel}>Location</Text>
-                                <Text style={[styles.detailValue, { color: textColor }]}>{meeting.location}</Text>
-                            </View>
-                        </View>
-
-                        {meeting.location_url && (
-                            <View style={styles.detailItem}>
-                                <Feather name="link" size={20} color={theme.colorNouraBlue} />
-                                <View style={styles.detailText}>
-                                    <Text style={styles.detailLabel}>Meeting Link</Text>
-                                    <Text style={[styles.detailValue, { color: textColor }]}>{meeting.location_url}</Text>
-                                </View>
-                            </View>
-                        )}
                     </View>
 
                     {/* Owner */}
                     <View style={[styles.section, { borderBottomColor: borderColor }]}>
                         <Text style={[styles.sectionTitle, { color: textColor }]}>Meeting Owner</Text>
 
-                        {meeting.participants.find(p => p.user_id === meeting.owner_id) ? (
+                        {meeting.participants.find(p => p.user_id === meeting.created_by) ? (
                             <TouchableOpacity
                                 style={[styles.organizerItem, { backgroundColor: cardColor }]}
                                 onPress={() => {
-                                    const owner = meeting.participants.find(p => p.user_id === meeting.owner_id);
+                                    const owner = meeting.participants.find(p => p.user_id === meeting.created_by);
                                     if (owner) handleParticipantPress(owner.user.account);
                                 }}
                                 activeOpacity={0.7}
                             >
                                 <View style={styles.organizerAvatar}>
                                     <Text style={styles.organizerInitials}>
-                                        {getInitials(meeting.participants.find(p => p.user_id === meeting.owner_id)?.user.name || 'Unknown')}
+                                        {getInitials(meeting.participants.find(p => p.user_id === meeting.created_by)?.user.name || 'Unknown')}
                                     </Text>
                                 </View>
                                 <View style={styles.organizerInfo}>
                                     <Text style={[styles.organizerName, { color: textColor }]}>
-                                        {meeting.participants.find(p => p.user_id === meeting.owner_id)?.user.name || 'Unknown'}
+                                        {meeting.participants.find(p => p.user_id === meeting.created_by)?.user.name || 'Unknown'}
                                     </Text>
                                     <Text style={styles.organizerEmail}>
-                                        {meeting.participants.find(p => p.user_id === meeting.owner_id)?.user.email || 'Unknown'}
+                                        {meeting.participants.find(p => p.user_id === meeting.created_by)?.user.email || 'Unknown'}
                                     </Text>
                                 </View>
                                 <Feather name="chevron-right" size={16} color={theme.colorGrey} />

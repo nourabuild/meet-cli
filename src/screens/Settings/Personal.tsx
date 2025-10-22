@@ -6,7 +6,7 @@ import {
     ScrollView,
     StyleSheet,
     Alert,
-    TouchableOpacity,
+    // TouchableOpacity,
 } from "react-native";
 import { useReduxSelector } from "@/lib/hooks";
 import NouraButton from "@/lib/components/NouraButton";
@@ -14,8 +14,8 @@ import PhoneInput from "@/lib/components/phone-input";
 import { UserRepo } from "@/repo";
 import * as SecureStore from 'expo-secure-store';
 import { theme } from "@/styles/theme";
-import { router } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { router, Stack } from "expo-router";
+// import { Feather } from "@expo/vector-icons";
 import SafeAreaContainer from "@/lib/utils/safe-area-container";
 import { useThemeColor } from "@/lib/hooks/theme/useThemeColor";
 
@@ -69,7 +69,7 @@ function formDataReducer(state: FormData, action: { type: string; field?: keyof 
 
 export default function AccountSettings() {
     const user = useReduxSelector((state) => state.user);
-    
+
     const backgroundColor = useThemeColor({}, 'background');
     const textColor = useThemeColor({}, 'text');
     const cardColor = useThemeColor({}, 'card');
@@ -203,17 +203,19 @@ export default function AccountSettings() {
     }
 
     return (
+
         <SafeAreaContainer
             backgroundColor={backgroundColor}
             edges={['bottom']}>
+
             <View style={[styles.container, { backgroundColor }]}>
-                <View style={styles.header}>
+                {/* <View style={styles.header}>
                     <TouchableOpacity onPress={handleBack}>
                         <Feather name="arrow-left" size={24} color={textColor} />
                     </TouchableOpacity>
                     <Text style={[styles.headerTitle, { color: textColor }]}>Personal</Text>
                     <View style={styles.placeholder} />
-                </View>
+                </View> */}
 
                 <ScrollView
                     style={styles.scrollContainer}
@@ -367,24 +369,24 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    header: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        paddingTop: 16,
-        paddingBottom: 16,
-        paddingHorizontal: 20,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colorLightGrey,
-    },
+    // header: {
+    //     flexDirection: "row",
+    //     alignItems: "center",
+    //     justifyContent: "space-between",
+    //     paddingTop: 16,
+    //     paddingBottom: 16,
+    //     paddingHorizontal: 20,
+    //     borderBottomWidth: 1,
+    //     borderBottomColor: theme.colorLightGrey,
+    // },
 
-    headerTitle: {
-        fontSize: 20,
-        fontWeight: "600",
-    },
-    placeholder: {
-        width: 40,
-    },
+    // headerTitle: {
+    //     fontSize: 20,
+    //     fontWeight: "600",
+    // },
+    // placeholder: {
+    //     width: 40,
+    // },
     scrollContainer: {
         flex: 1,
     },
