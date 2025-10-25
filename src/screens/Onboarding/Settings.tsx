@@ -15,10 +15,13 @@ import * as SecureStore from 'expo-secure-store';
 import { CalendarRepo } from '@/repo';
 import { useAuth } from '@/lib/utils/auth-context';
 import { Calendars } from '@/repo/calendars';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import type { WeeklySchedule } from './Calendar';
 
 type SettingsStepOnboardingProps = {
     onBack?: () => void;
     onComplete?: () => void;
+    schedule: WeeklySchedule[];
 };
 
 type SettingsFormState = {
@@ -35,6 +38,33 @@ const fallbackTimezone = (() => {
         return '';
     }
 })();
+
+const DAY_NAMES = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+];
+
+const submitWeeklyAvailability = async (weeklySchedule: WeeklySchedule[], token: string) => {
+    const daysWithAvailability = weeklySchedule.filter(day => day.intervals.length > 0);
+
+    for (const daySchedule of daysWithAvailability) {
+        const result = await CalendarRepo.AddUserWeeklyAvailability(
+            daySchedule.day_of_week,
+            daySchedule.intervals,
+            token,
+        );
+
+        if (!result.success) {
+            const dayName = DAY_NAMES[daySchedule.day_of_week] ?? `day ${daySchedule.day_of_week}`;
+            throw new Error(`Failed to save availability for ${dayName}`);
+        }
+    }
+};
 
 type LoadSettingsArgs = {
     setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -64,12 +94,15 @@ const loadUserSettings = async ({
         }
 
         const data = response.data;
-        setForm({
+        console.log('[Settings] API returned data:', data);
+        const formState = {
             maxDaysToBook: data.max_days_to_book != null ? String(data.max_days_to_book) : '',
             minDaysToBook: data.min_days_to_book != null ? String(data.min_days_to_book) : '',
             delayBetweenMeetings: data.delay_between_meetings != null ? String(data.delay_between_meetings) : '',
             timezone: data.timezone?.trim?.() || defaultTimezone,
-        });
+        };
+        console.log('[Settings] Setting form state to:', formState);
+        setForm(formState);
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load scheduling preferences';
         setError(message);
@@ -78,7 +111,7 @@ const loadUserSettings = async ({
     }
 };
 
-function SettingsStepOnboarding({ onBack, onComplete }: SettingsStepOnboardingProps) {
+function SettingsStepOnboarding({ onBack, onComplete, schedule }: SettingsStepOnboardingProps) {
     const [form, setForm] = useState<SettingsFormState>({
         maxDaysToBook: '',
         minDaysToBook: '',
@@ -131,6 +164,8 @@ function SettingsStepOnboarding({ onBack, onComplete }: SettingsStepOnboardingPr
                 throw new Error('Authentication token not found');
             }
 
+            await submitWeeklyAvailability(schedule, token);
+
             const parseInteger = (value: string) => {
                 const trimmed = value.trim();
                 if (trimmed.length === 0) return undefined;
@@ -167,23 +202,22 @@ function SettingsStepOnboarding({ onBack, onComplete }: SettingsStepOnboardingPr
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                {onBack ? (
-                    <TouchableOpacity
-                        onPress={onBack}
-                        style={styles.headerButton}
-                        accessibilityRole="button"
-                        accessibilityLabel="Go back to availability setup"
-                    >
-                        <Feather name="arrow-left" size={22} color="#1F2937" />
-                    </TouchableOpacity>
-                ) : (
-                    <View style={styles.headerPlaceholder} />
-                )}
+            <SafeAreaView edges={['top']} style={styles.headerSafeArea}>
+                <View style={styles.header}>
+                    {onBack ? (
+                        <TouchableOpacity
+                            onPress={onBack}
+                            style={styles.headerButton}
+                            accessibilityRole="button"
+                            accessibilityLabel="Go back to availability setup"
+                        >
+                            <Feather name="arrow-left" size={22} color="#1F2937" />
+                        </TouchableOpacity>
+                    ) : null}
 
-                <Text style={styles.title}>Scheduling Preferences</Text>
-                <View style={styles.headerPlaceholder} />
-            </View>
+                    <Text style={styles.title}>Scheduling Preferences</Text>
+                </View>
+            </SafeAreaView>
 
             <ScrollView
                 style={styles.scrollView}
@@ -316,22 +350,17 @@ const styles = StyleSheet.create({
     },
     header: {
         flexDirection: 'row',
-        paddingHorizontal: 20,
-        paddingBottom: 10,
-        justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
-        borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
+        paddingHorizontal: 20,
+        paddingBottom: 12,
+        paddingTop: 12,
+        backgroundColor: 'transparent',
     },
     title: {
         fontSize: 20,
         fontWeight: '700',
         color: '#1F2937',
+        textAlign: 'left',
     },
     headerButton: {
         width: 44,
@@ -339,10 +368,10 @@ const styles = StyleSheet.create({
         borderRadius: 22,
         alignItems: 'center',
         justifyContent: 'center',
+        marginRight: 12,
     },
-    headerPlaceholder: {
-        width: 44,
-        height: 44,
+    headerSafeArea: {
+        backgroundColor: '#FAFAFA',
     },
     scrollView: {
         flex: 1,
@@ -356,7 +385,7 @@ const styles = StyleSheet.create({
     subtitle: {
         fontSize: 16,
         color: '#6B7280',
-        textAlign: 'center',
+        textAlign: 'left',
         marginBottom: 24,
         lineHeight: 24,
     },

@@ -7,8 +7,8 @@ import NewCalendarRepository from "./calendars";
 
 import { AuthRepository, UserRepository, FollowRepository, MeetingRepository, CalendarRepository } from "./repository";
 
-export const host = "https://api.noura.software";
-// export const host = "http://localhost:8000";
+// export const host = "https://api.noura.software";
+export const host = "http://localhost:8000";
 
 const AuthRepo = NewAuthRepository(host);
 const UserRepo = NewUserRepository(host);

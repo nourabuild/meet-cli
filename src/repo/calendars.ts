@@ -512,6 +512,12 @@ const NewCalendarRepository = (host: string): CalendarRepository => {
                 } satisfies Calendars.UserSettingsResponse;
             }
 
+            console.log('[CalendarRepo] GetUserSettings response:', {
+                status: req.status,
+                ok: req.ok,
+                data: response,
+            });
+
             return {
                 success: true,
                 data: response,

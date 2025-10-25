@@ -1,4 +1,4 @@
-import React, { useState, useReducer } from 'react';
+import React, { useReducer } from 'react';
 import {
     View,
     Text,
@@ -6,20 +6,16 @@ import {
     ScrollView,
     StyleSheet,
     TextInput,
-    ActivityIndicator,
-    Alert,
 } from 'react-native';
-import { Feather, MaterialIcons } from '@expo/vector-icons';
-import { CalendarRepo } from '@/repo';
-import * as SecureStore from 'expo-secure-store';
-import { useAuth } from '@/lib/utils/auth-context';
+import { Feather } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-interface TimeInterval {
+export interface TimeInterval {
     start_time: string;
     end_time: string;
 }
 
-interface WeeklySchedule {
+export interface WeeklySchedule {
     day_of_week: number;
     intervals: TimeInterval[];
 }
@@ -34,24 +30,22 @@ const DAYS_OF_WEEK = [
     { id: 6, name: 'SAT', label: 'Saturday' },
 ];
 
-// -------------------------------
-// State Management
-// -------------------------------
+export const createEmptyWeeklySchedule = (): WeeklySchedule[] =>
+    DAYS_OF_WEEK.map(day => ({
+        day_of_week: day.id,
+        intervals: [],
+    }));
 
-type CalendarSubmissionState =
-    | { status: "idle" }
-    | { status: "loading" }
-    | { status: "error"; error: string }
-    | { status: "success" };
+export const cloneWeeklySchedule = (schedule: WeeklySchedule[]): WeeklySchedule[] =>
+    schedule.map(day => ({
+        ...day,
+        intervals: day.intervals.map(interval => ({ ...interval })),
+    }));
 
 type CalendarStepOnboardingProps = {
-    onSuccess?: () => Promise<void> | void;
+    initialSchedule?: WeeklySchedule[];
+    onContinue?: (schedule: WeeklySchedule[]) => Promise<void> | void;
 };
-
-const initialWeeklySchedule: WeeklySchedule[] = DAYS_OF_WEEK.map(day => ({
-    day_of_week: day.id,
-    intervals: []
-}));
 
 function weeklyScheduleReducer(state: WeeklySchedule[], action: { type: string; payload?: any }) {
     switch (action.type) {
@@ -106,10 +100,12 @@ function weeklyScheduleReducer(state: WeeklySchedule[], action: { type: string; 
     }
 }
 
-function CalendarStepOnboarding({ onSuccess }: CalendarStepOnboardingProps) {
-    const [weeklySchedule, dispatchWeeklySchedule] = useReducer(weeklyScheduleReducer, initialWeeklySchedule);
-    const [submissionState, setSubmissionState] = useState<CalendarSubmissionState>({ status: "idle" });
-    const { checkOnboardingStatus } = useAuth();
+function CalendarStepOnboarding({ initialSchedule, onContinue }: CalendarStepOnboardingProps) {
+    const [weeklySchedule, dispatchWeeklySchedule] = useReducer(
+        weeklyScheduleReducer,
+        initialSchedule ?? createEmptyWeeklySchedule(),
+        cloneWeeklySchedule
+    );
 
     const toggleDayAvailability = (dayId: number) => {
         dispatchWeeklySchedule({ type: 'TOGGLE_DAY', payload: dayId });
@@ -203,7 +199,9 @@ function CalendarStepOnboarding({ onSuccess }: CalendarStepOnboardingProps) {
                         )}
 
                         {!isAvailable && (
-                            <Text style={styles.unavailableText}>Unavailable</Text>
+                            <View style={styles.timePlaceholder}>
+                                <Text style={styles.unavailableText}>Unavailable</Text>
+                            </View>
                         )}
                     </View>
 
@@ -256,59 +254,17 @@ function CalendarStepOnboarding({ onSuccess }: CalendarStepOnboardingProps) {
         );
     };
 
-    const handleContinue = async () => {
-        setSubmissionState({ status: "loading" });
-
-        try {
-            const token = await SecureStore.getItemAsync('access_token');
-            if (!token) {
-                setSubmissionState({ status: "error", error: "Authentication token not found" });
-                Alert.alert("Error", "Authentication token not found");
-                return;
-            }
-
-            const daysWithAvailability = weeklySchedule.filter(day => day.intervals.length > 0);
-
-            for (const daySchedule of daysWithAvailability) {
-                const result = await CalendarRepo.AddUserWeeklyAvailability(
-                    daySchedule.day_of_week,
-                    daySchedule.intervals,
-                    token
-                );
-
-                if (!result.success) {
-                    const dayName = DAYS_OF_WEEK.find(d => d.id === daySchedule.day_of_week)?.name || 'Unknown';
-                    throw new Error(`Failed to save availability for ${dayName}`);
-                }
-            }
-
-            // Wait for 3 seconds to show loading
-            await new Promise(resolve => setTimeout(resolve, 3000));
-
-            setSubmissionState({ status: "success" });
-
-            const postSuccess = onSuccess ?? checkOnboardingStatus;
-            try {
-                await postSuccess();
-            } catch (postSuccessError) {
-                console.error("Calendar step post-success handler failed:", postSuccessError);
-            }
-
-        } catch (error) {
-            console.error("Save availability error:", error);
-            const errorMessage = error instanceof Error ? error.message : "Failed to save availability. Please try again.";
-            setSubmissionState({ status: "error", error: errorMessage });
-            Alert.alert("Error", errorMessage);
-        }
+    const handleContinue = () => {
+        onContinue?.(cloneWeeklySchedule(weeklySchedule));
     };
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <View style={styles.headerLeft} />
-                <Text style={styles.title}>Set Your Schedule</Text>
-                <View style={styles.headerRight} />
-            </View>
+            <SafeAreaView edges={['top']} style={styles.headerSafeArea}>
+                <View style={styles.header}>
+                    <Text style={styles.title}>Set Your Schedule</Text>
+                </View>
+            </SafeAreaView>
 
             <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
                 <View style={styles.content}>
@@ -316,34 +272,18 @@ function CalendarStepOnboarding({ onSuccess }: CalendarStepOnboardingProps) {
                         Set your weekly availability to let others know when you are free to meet
                     </Text>
 
-                    <View style={styles.sectionHeader}>
-                        <View style={styles.sectionHeaderLeft}>
-                            <MaterialIcons name="event-available" size={20} color="#3B82F6" />
-                            <Text style={styles.sectionTitle}>Weekly Schedule</Text>
-                        </View>
-                    </View>
-
                     <View style={styles.availabilityContent}>
                         {DAYS_OF_WEEK.map(renderDayRow)}
                     </View>
 
                     <TouchableOpacity
                         onPress={handleContinue}
-                        disabled={submissionState.status === "loading"}
-                        style={[styles.continueButton, submissionState.status === "loading" && styles.continueButtonDisabled]}
+                        style={styles.continueButton}
                         accessibilityRole="button"
-                        accessibilityLabel={submissionState.status === "loading" ? "Saving schedule" : "Continue to next step"}
-                        accessibilityHint="Saves your schedule and continues onboarding"
-                        accessibilityState={{ disabled: submissionState.status === "loading" }}
+                        accessibilityLabel="Continue to next step"
+                        accessibilityHint="Saves your schedule choices and continues onboarding"
                     >
-                        {submissionState.status === "loading" ? (
-                            <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="small" color="#FFFFFF" style={styles.loadingSpinner} />
-                                <Text style={styles.continueButtonText}>Saving schedule...</Text>
-                            </View>
-                        ) : (
-                            <Text style={styles.continueButtonText}>Continue</Text>
-                        )}
+                        <Text style={styles.continueButtonText}>Continue</Text>
                     </TouchableOpacity>
                 </View>
             </ScrollView>
@@ -361,27 +301,20 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         paddingHorizontal: 20,
-        paddingBottom: 10,
-        justifyContent: 'space-between',
+        paddingBottom: 12,
+        paddingTop: 12,
+        justifyContent: 'flex-start',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
-        borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
+        backgroundColor: 'transparent',
     },
     title: {
         fontSize: 24,
         fontWeight: '700',
         color: '#1F2937',
+        textAlign: 'left',
     },
-    headerLeft: {
-        width: 64,
-    },
-    headerRight: {
-        width: 64,
+    headerSafeArea: {
+        backgroundColor: '#FAFAFA',
     },
     scrollView: {
         flex: 1,
@@ -392,37 +325,15 @@ const styles = StyleSheet.create({
     subtitle: {
         fontSize: 16,
         color: '#6B7280',
-        textAlign: 'center',
+        textAlign: 'left',
         marginBottom: 24,
         lineHeight: 24,
-    },
-    sectionHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 16,
-        backgroundColor: '#FFFFFF',
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
-        paddingHorizontal: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: '#F3F4F6',
-    },
-    sectionHeaderLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: '#1F2937',
-        marginLeft: 10,
     },
     availabilityContent: {
         backgroundColor: '#FFFFFF',
         paddingVertical: 4,
-        borderBottomLeftRadius: 12,
-        borderBottomRightRadius: 12,
+        borderRadius: 12,
+        marginTop: 16,
     },
     dayRow: {
         paddingHorizontal: 20,
@@ -473,10 +384,16 @@ const styles = StyleSheet.create({
     },
     timeContainer: {
         flex: 1,
+        minHeight: 44,
     },
     timeInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
+        minHeight: 44,
+    },
+    timePlaceholder: {
+        minHeight: 44,
+        justifyContent: 'center',
     },
     continueButton: {
         backgroundColor: '#3B82F6',
@@ -494,16 +411,5 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 16,
         fontWeight: '600',
-    },
-    continueButtonDisabled: {
-        opacity: 0.7,
-    },
-    loadingContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    loadingSpinner: {
-        marginRight: 8,
     },
 });

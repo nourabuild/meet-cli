@@ -1,5 +1,5 @@
-import React, { useReducer } from "react";
-import CalendarStepOnboarding from "./Calendar";
+import React, { useReducer, useState } from "react";
+import CalendarStepOnboarding, { createEmptyWeeklySchedule, WeeklySchedule, cloneWeeklySchedule } from "./Calendar";
 import SettingsStepOnboarding from "./Settings";
 
 type OnboardingStep = "calendar" | "settings";
@@ -20,8 +20,10 @@ const onboardingReducer = (_state: OnboardingStep, action: OnboardingAction): On
 
 function Onboarding() {
     const [step, dispatch] = useReducer(onboardingReducer, "calendar");
+    const [scheduleDraft, setScheduleDraft] = useState<WeeklySchedule[]>(createEmptyWeeklySchedule());
 
-    const handleCalendarSuccess = () => {
+    const handleCalendarContinue = (schedule: WeeklySchedule[]) => {
+        setScheduleDraft(cloneWeeklySchedule(schedule));
         dispatch({ type: "GOTO_SETTINGS" });
     };
 
@@ -30,8 +32,17 @@ function Onboarding() {
     };
 
     return step === "calendar"
-        ? <CalendarStepOnboarding onSuccess={handleCalendarSuccess} />
-        : <SettingsStepOnboarding onBack={handleSettingsBack} />;
+        ? (
+            <CalendarStepOnboarding
+                initialSchedule={scheduleDraft}
+                onContinue={handleCalendarContinue}
+            />
+        ) : (
+            <SettingsStepOnboarding
+                onBack={handleSettingsBack}
+                schedule={scheduleDraft}
+            />
+        );
 }
 
 export default Onboarding;

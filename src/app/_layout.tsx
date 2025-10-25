@@ -40,7 +40,14 @@ function RootLayout() {
                     </Stack.Protected>
 
                     <Stack.Protected guard={isAuthenticated && !hasCompletedOnboarding}>
-                        <Stack.Screen name="onboard-user" options={{ animation: "fade" }} />
+                        <Stack.Screen
+                            name="onboard-user"
+                            options={{
+                                animation: "fade",
+                                headerShown: false,
+                            }} />
+
+
                     </Stack.Protected>
 
                     <Stack.Protected guard={!!isAuthenticated && !!hasCompletedOnboarding}>

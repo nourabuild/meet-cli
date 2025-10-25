@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
+import { router } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
+import Entypo from '@expo/vector-icons/Entypo';
 import * as SecureStore from 'expo-secure-store';
 
 import { theme } from '@/styles/theme';
@@ -486,6 +488,11 @@ export default function NewMeeting() {
             }
 
             setCreateMeetingState({ status: "success", data: response.data });
+
+            // Navigate back after a brief delay to show success message
+            setTimeout(() => {
+                router.back();
+            }, 1000);
         } catch (error) {
             console.error('Error creating meeting:', error);
             setCreateMeetingState({
@@ -547,8 +554,9 @@ export default function NewMeeting() {
                         {/* Selected Participants */}
                         <View style={styles.selectedParticipantsSection}>
                             <View style={styles.participantList}>
-                                {invitedParticipants.map((participant, index) => {
-                                    const isLastItem = index === invitedParticipants.length - 1;
+                                {formState.participants.map((participant, index) => {
+                                    const isCurrentUser = currentUser && participant.id === currentUser.id;
+                                    const isLastItem = index === formState.participants.length - 1;
                                     return (
                                         <View
                                             key={participant.id}
@@ -563,7 +571,7 @@ export default function NewMeeting() {
                                                     styles.participantName,
                                                     { color: textColor }
                                                 ]}>
-                                                    {participant.name}
+                                                    {participant.name}{isCurrentUser ? ' (You)' : ''}
                                                 </Text>
                                                 {participant.email && (
                                                     <Text style={styles.participantEmail}>
@@ -571,20 +579,26 @@ export default function NewMeeting() {
                                                     </Text>
                                                 )}
                                             </View>
-                                            <TouchableOpacity
-                                                style={styles.participantRemoveButton}
-                                                onPress={() => dispatch({
-                                                    type: 'REMOVE_PARTICIPANT',
-                                                    participantId: participant.id,
-                                                    currentUserId: currentUser?.id
-                                                })}
-                                            >
-                                                <Feather name="x" size={18} color={theme.colorGrey} />
-                                            </TouchableOpacity>
+                                            {isCurrentUser ? (
+                                                <View style={styles.participantRemoveButton}>
+                                                    <Entypo name="block" size={18} color={theme.colorGrey} />
+                                                </View>
+                                            ) : (
+                                                <TouchableOpacity
+                                                    style={styles.participantRemoveButton}
+                                                    onPress={() => dispatch({
+                                                        type: 'REMOVE_PARTICIPANT',
+                                                        participantId: participant.id,
+                                                        currentUserId: currentUser?.id
+                                                    })}
+                                                >
+                                                    <Feather name="x" size={18} color={theme.colorGrey} />
+                                                </TouchableOpacity>
+                                            )}
                                         </View>
                                     );
                                 })}
-                                {invitedParticipants.length === 0 && (
+                                {formState.participants.length === 0 && (
                                     <View style={styles.participantEmptyState}>
                                         <Text style={styles.participantEmptyText}>
                                             No participants added yet.
@@ -661,16 +675,6 @@ export default function NewMeeting() {
                                         );
                                     })}
                                 </ScrollView>
-                            )}
-
-                            {currentUser && (
-                                <View style={styles.currentUserChipContainer}>
-                                    <View style={styles.currentUserChip}>
-                                        <Text style={styles.currentUserChipText}>
-                                            {currentUser.name} (You)
-                                        </Text>
-                                    </View>
-                                </View>
                             )}
                         </View>
 
@@ -1057,21 +1061,6 @@ const styles = StyleSheet.create({
     },
     participantEmptyText: {
         fontSize: 14,
-        color: theme.colorGrey,
-    },
-    currentUserChipContainer: {
-        marginTop: 12,
-        alignItems: 'flex-start',
-    },
-    currentUserChip: {
-        backgroundColor: theme.colorLightGrey,
-        borderRadius: 20,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-    },
-    currentUserChipText: {
-        fontSize: 14,
-        fontWeight: '500',
         color: theme.colorGrey,
     },
     availabilitySection: {
