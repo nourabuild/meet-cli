@@ -18,7 +18,7 @@
         "light": "./assets/app.icon/app-light.png",
         "tinted": "./assets/app.icon/app-tinted.png"
       },
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.anonymous.noura",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
